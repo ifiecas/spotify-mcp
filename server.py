@@ -279,9 +279,10 @@ def get_artist_own_tracks(artist_id: str):
     }
 
 # ─────────────────────────────────────────────
-# 📜 Manifest Route (Fix for Copilot Discovery)
+# 📜 Manifest Route (for Copilot Discovery)
 # ─────────────────────────────────────────────
 async def manifest(request):
+    """Public manifest for Copilot Studio."""
     tools = [
         {"name": "search_artist_by_name", "description": "Search for artists by name and return Spotify IDs."},
         {"name": "get_artist_top_tracks", "description": "Get an artist’s top tracks by popularity."},
@@ -315,7 +316,7 @@ async def healthcheck(request):
 app = Starlette(
     routes=[
         Route("/health", healthcheck),
-        Route("/mcp/manifest", manifest),  # 👈 Fix for Copilot discovery
+        Route("/manifest", manifest),  # ✅ Fix: Manifest is outside /mcp mount
         Mount("/mcp", app=mcp.streamable_http_app()),
     ]
 )
