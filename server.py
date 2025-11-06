@@ -18,8 +18,9 @@ import multiprocessing
 import requests
 import uvicorn
 from dotenv import load_dotenv
-from starlette.responses import JSONResponse, PlainTextResponse
-from starlette.requests import Request
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from mcp.server.fastmcp import FastMCP
 
 # ───────────────────────────
@@ -32,8 +33,19 @@ SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
     raise EnvironmentError("❌ Missing Spotify credentials in .env")
 
+# Initialize FastMCP + FastAPI app
 mcp = FastMCP("spotify-mcp", stateless_http=True)
 app = mcp.streamable_http_app()
+
+# Enable CORS (✅ fixes “Failed to fetch” in Swagger/Copilot)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # You can later restrict this to Copilot Studio origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 logging.basicConfig(level=logging.INFO)
 
 # ───────────────────────────
@@ -120,21 +132,21 @@ def get_artist_albums(artist_id: str, limit: int = 10):
 # ───────────────────────────
 # 🌐 Discovery + Health Routes
 # ───────────────────────────
-@app.route("/", methods=["GET"])
-async def root(request: Request):
+@app.get("/")
+async def root():
     return JSONResponse({
         "server": "Spotify MCP Server 🎧",
         "status": "running",
         "message": "Welcome to Ivy’s Spotify MCP endpoint!"
     })
 
-@app.route("/mcp/manifest", methods=["GET"])
-async def manifest(request: Request):
+@app.get("/mcp/manifest")
+async def manifest():
     """Return MCP's registered tools for Copilot Studio discovery."""
     return JSONResponse(mcp.describe())
 
-@app.route("/.well-known/ai-plugin.json", methods=["GET"])
-async def plugin_manifest(request: Request):
+@app.get("/.well-known/ai-plugin.json")
+async def plugin_manifest():
     """Expose MCP metadata for Copilot Studio."""
     return JSONResponse({
         "schema_version": "v1",
