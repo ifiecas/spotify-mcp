@@ -9,24 +9,24 @@ Description:
 
 Tools Exposed:
     🎵 search_artist_by_name     → Find artists by name
-    🔝 get_artist_top_tracks      → Retrieve top tracks
-    💿 get_artist_albums          → List albums & tracks
-    🎚️ get_audio_features         → Fetch track audio features
-    🎼 get_artist_audio_profile   → Summarize artist audio profile
-    🎤 get_artist_own_tracks      → Filter solo songs only
+    🔝 get_artist_top_tracks     → Retrieve top tracks
+    💿 get_artist_albums         → List albums & tracks
+    🎚️ get_audio_features        → Fetch track audio features
+    🎼 get_artist_audio_profile  → Summarize artist audio profile
+    🎤 get_artist_own_tracks     → Filter solo songs only
 
 Setup:
     1. Create a `.env` file with:
-        SPOTIFY_CLIENT_ID=your_client_id
-        SPOTIFY_CLIENT_SECRET=your_client_secret
+         SPOTIFY_CLIENT_ID=your_client_id
+         SPOTIFY_CLIENT_SECRET=your_client_secret
     2. Install dependencies:
-        pip install requests python-dotenv mcp flask gunicorn
+         pip install requests python-dotenv mcp flask gunicorn
     3. Local test:
-        python server.py
+         python server.py
     4. Azure startup command:
-        gunicorn --bind=0.0.0.0:$PORT server:app
-    5. Your deployed endpoint:
-        https://spotify-mcp-hha8cccmgnete3fm.australiaeast-01.azurewebsites.net
+         gunicorn --bind=0.0.0.0:$PORT server:app
+    5. Deployed endpoint:
+         https://spotify-mcp-hha8cccmgnete3fm.australiaeast-01.azurewebsites.net
 """
 
 import os
@@ -43,9 +43,7 @@ SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 
 if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-    raise EnvironmentError(
-        "❌ Missing Spotify credentials. Add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to your .env file."
-    )
+    raise EnvironmentError("❌ Missing Spotify credentials. Add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET.")
 
 # ─────────────────────────────────────────────
 # ⚙️ Initialize MCP Server
@@ -56,7 +54,6 @@ mcp = FastMCP("spotify-mcp")
 # 🔐 Helper: Get Spotify Access Token
 # ─────────────────────────────────────────────
 def get_spotify_token() -> str:
-    """Get Spotify access token via Client Credentials flow."""
     try:
         res = requests.post(
             "https://accounts.spotify.com/api/token",
@@ -70,7 +67,7 @@ def get_spotify_token() -> str:
         raise RuntimeError(f"Failed to retrieve Spotify token: {e}")
 
 # ─────────────────────────────────────────────
-# 🔍 Tool 1: Search Artist by Name
+# 🎵 MCP Tools
 # ─────────────────────────────────────────────
 @mcp.tool()
 def search_artist_by_name(artist_name: str, limit: int = 5):
@@ -99,9 +96,7 @@ def search_artist_by_name(artist_name: str, limit: int = 5):
         for a in data
     ]
 
-# ─────────────────────────────────────────────
-# 🎵 Tool 2: Get Artist Top Tracks
-# ─────────────────────────────────────────────
+
 @mcp.tool()
 def get_artist_top_tracks(artist_id: str, market: str = "US"):
     """Return an artist’s top tracks by popularity."""
@@ -131,9 +126,7 @@ def get_artist_top_tracks(artist_id: str, market: str = "US"):
         ],
     }
 
-# ─────────────────────────────────────────────
-# 💿 Tool 3: Get Artist Albums
-# ─────────────────────────────────────────────
+
 @mcp.tool()
 def get_artist_albums(artist_id: str, include_tracks: bool = True):
     """Fetch albums and singles for a given artist."""
@@ -166,9 +159,7 @@ def get_artist_albums(artist_id: str, include_tracks: bool = True):
         albums.append(album)
     return {"artist_id": artist_id, "albums": albums}
 
-# ─────────────────────────────────────────────
-# 🎚️ Tool 4: Get Audio Features by Track IDs
-# ─────────────────────────────────────────────
+
 @mcp.tool()
 def get_audio_features(track_ids: list):
     """Fetch Spotify audio features for up to 100 tracks."""
@@ -200,9 +191,7 @@ def get_audio_features(track_ids: list):
         ],
     }
 
-# ─────────────────────────────────────────────
-# 🎼 Tool 5: Get Artist Audio Profile (Summary)
-# ─────────────────────────────────────────────
+
 @mcp.tool()
 def get_artist_audio_profile(artist_id: str):
     """Fetch and summarize all audio features for an artist’s tracks."""
@@ -247,12 +236,9 @@ def get_artist_audio_profile(artist_id: str):
     def avg(field): return round(sum(f[field] for f in features if f.get(field)) / len(features), 3)
     summary = {k: avg(k) for k in ["danceability", "energy", "valence", "instrumentalness", "speechiness", "tempo"]}
     summary["total_tracks"] = len(features)
-
     return {"artist_name": artist_name, "artist_id": artist_id, "summary": summary, "sample_features": features[:5]}
 
-# ─────────────────────────────────────────────
-# 🎤 Tool 6: Get Artist’s Own Songs Only
-# ─────────────────────────────────────────────
+
 @mcp.tool()
 def get_artist_own_tracks(artist_id: str):
     """Fetch only tracks where the artist is the *primary* performer."""
@@ -288,26 +274,57 @@ def get_artist_own_tracks(artist_id: str):
     return {"artist_name": artist_name, "artist_id": artist_id, "total_songs": len(songs), "songs": songs[:25]}
 
 # ─────────────────────────────────────────────
-# 🌐 Flask App for Azure Hosting
+# 🌐 Flask App for Azure Hosting + MCP Discovery
 # ─────────────────────────────────────────────
 app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
 def health_check():
-    """Health check endpoint for Azure."""
+    """Health check endpoint."""
     return jsonify({
         "server": "Spotify MCP Server 🎧",
         "status": "running",
         "message": "Welcome to Ivy’s Spotify MCP endpoint!"
     })
 
+@app.route("/.well-known/ai-plugin.json", methods=["GET"])
+def plugin_manifest():
+    """Expose MCP metadata for Copilot Studio discovery."""
+    return jsonify({
+        "schema_version": "v1",
+        "name_for_human": "Spotify MCP Server 🎧",
+        "name_for_model": "spotify-mcp",
+        "description_for_model": (
+            "Connects to Spotify Web API via MCP. "
+            "Provides tools: search_artist_by_name, get_artist_top_tracks, "
+            "get_artist_albums, get_audio_features, get_artist_audio_profile, get_artist_own_tracks."
+        ),
+        "auth": {"type": "none"},
+        "api": {
+            "type": "openapi",
+            "url": "https://spotify-mcp-hha8cccmgnete3fm.australiaeast-01.azurewebsites.net/mcp"
+        },
+        "logo_url": "https://developer.spotify.com/assets/branding-guidelines/icon1.svg",
+        "contact_email": "ivy.fiecas@example.com",
+        "legal_info_url": "https://developer.spotify.com/terms/"
+    })
+
+@app.route("/mcp/manifest", methods=["GET"])
+def mcp_manifest():
+    """Return MCP's registered tools for debugging."""
+    return jsonify(mcp.describe())
+
 @app.route("/mcp", methods=["POST"])
 def invoke_mcp():
-    """Main MCP endpoint for Copilot Studio / Power Apps."""
-    return mcp.handle_http(request)
+    """Main MCP entrypoint for Copilot Studio / Power Apps."""
+    try:
+        return mcp.handle_http(request)
+    except Exception as e:
+        print("❌ MCP Error:", e)
+        return jsonify({"error": str(e)}), 500
 
 # ─────────────────────────────────────────────
-# 🏁 Entry Point (for local debug)
+# 🏁 Entry Point (local debug)
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
