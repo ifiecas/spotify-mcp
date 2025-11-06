@@ -283,11 +283,10 @@ def get_artist_own_tracks(artist_id: str):
 # ─────────────────────────────────────────────
 async def mcp_config(request):
     """Returns MCP configuration in the standard format."""
-    base_url = str(request.base_url).rstrip('/')
     return JSONResponse({
         "mcpServers": {
             "spotify-insights": {
-                "url": f"{base_url}/mcp/sse",
+                "url": "https://spotify-mcp-hha8cccmgnete3fm.australiaeast-01.azurewebsites.net/mcp/sse",
                 "transportType": "sse"
             }
         }
