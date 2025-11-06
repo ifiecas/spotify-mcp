@@ -1,5 +1,5 @@
-requests
-python-dotenv
+uvicorn
+starlette
 mcp
-flask
-gunicorn
+python-dotenv
+requests
