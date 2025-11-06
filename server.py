@@ -4,7 +4,7 @@ Spotify MCP Server 🎧
 Author: Ivy Fiecas-Borjal
 
 A Model Context Protocol (MCP) server that connects to the Spotify Web API
-and exposes data as MCP tools for use in Copilot Studio or ChatGPT.
+and exposes data as MCP tools for Microsoft Copilot Studio or ChatGPT.
 
 Features:
     🎵  Search artists by name
@@ -30,13 +30,13 @@ SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 
 if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-    print("⚠️ Warning: Missing Spotify credentials — API tools will fail.")
+    print("⚠️ Warning: Missing Spotify credentials — Spotify API calls will fail.")
 
 # ─────────────────────────────────────────────
 # ⚙️ Initialize Flask + MCP
 # ─────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})  # enable CORS for Copilot Studio
+CORS(app, resources={r"/*": {"origins": "*"}})
 mcp = FastMCP("spotify-mcp-server")
 
 # ─────────────────────────────────────────────
@@ -72,6 +72,8 @@ def search_artist_by_name(artist_name: str, limit: int = 5):
     )
     res.raise_for_status()
     artists = res.json().get("artists", {}).get("items", [])
+    if not artists:
+        return {"message": f"No artists found for '{artist_name}'."}
     return [
         {
             "name": a["name"],
@@ -82,7 +84,7 @@ def search_artist_by_name(artist_name: str, limit: int = 5):
             "url": a["external_urls"]["spotify"],
         }
         for a in artists
-    ] or {"message": f"No artists found for '{artist_name}'."}
+    ]
 
 # ─────────────────────────────────────────────
 # 🎵 Tool 2: Get Artist Top Tracks
@@ -288,31 +290,30 @@ def get_artist_own_tracks(artist_id: str):
     }
 
 # ─────────────────────────────────────────────
-# 📜 MCP Manifest Route (for discovery)
+# 📜 MCP Manifest (for Copilot discovery)
 # ─────────────────────────────────────────────
 @app.route("/mcp/manifest", methods=["GET", "OPTIONS"])
 def manifest():
-    """List all registered MCP tools for discovery."""
-    tools = [
-        {"name": "search_artist_by_name", "description": "Search for artists by name and return their Spotify IDs."},
-        {"name": "get_artist_top_tracks", "description": "Fetch an artist’s top tracks by popularity."},
-        {"name": "get_artist_albums", "description": "Fetch albums and singles for a given artist."},
-        {"name": "get_audio_features", "description": "Fetch Spotify audio features (energy, danceability, etc.) for given tracks."},
-        {"name": "get_artist_audio_profile", "description": "Summarize the average audio profile of an artist based on all tracks."},
-        {"name": "get_artist_own_tracks", "description": "Fetch only songs where the artist is the primary performer."},
-    ]
-    return jsonify({
-        "server": "Spotify MCP Server 🎧",
+    """Provide MCP manifest in required schema."""
+    manifest_data = {
+        "name": "spotify-mcp-server",
         "version": "1.0.0",
-        "author": "Ivy Fiecas-Borjal",
-        "tools": tools,
-        "azure_ready": True,
-    })
+        "description": "An MCP server that connects to the Spotify Web API for music insights.",
+        "tools": [
+            {"name": "search_artist_by_name", "description": "Search for artists by name and return Spotify IDs."},
+            {"name": "get_artist_top_tracks", "description": "Get an artist’s top tracks by popularity."},
+            {"name": "get_artist_albums", "description": "Fetch albums and singles for a given artist."},
+            {"name": "get_audio_features", "description": "Fetch Spotify audio features for a list of track IDs."},
+            {"name": "get_artist_audio_profile", "description": "Summarize the average audio profile for an artist’s songs."},
+            {"name": "get_artist_own_tracks", "description": "Fetch only tracks where the artist is the primary performer."}
+        ]
+    }
+    return jsonify(manifest_data), 200
 
 # ─────────────────────────────────────────────
 # 🌐 Health Check & OAuth Callback
 # ─────────────────────────────────────────────
-@app.route("/", methods=["GET", "OPTIONS"])
+@app.route("/", methods=["GET"])
 def index():
     """Health check for Azure deployment."""
     try:
@@ -320,15 +321,14 @@ def index():
         token_status = "OK" if token else "Failed"
     except Exception as e:
         token_status = f"Error: {str(e)}"
-
     return jsonify({
         "status": "running",
         "spotify_token_status": token_status,
-        "tools_registered": "active",
+        "mcp_ready": True,
         "azure_ready": True,
     })
 
-@app.route("/callback", methods=["GET", "OPTIONS"])
+@app.route("/callback", methods=["GET"])
 def callback():
     """Handle Spotify OAuth callback (for future user-based flows)."""
     code = request.args.get("code")
@@ -342,7 +342,7 @@ def callback():
 # ─────────────────────────────────────────────
 @app.before_request
 def handle_preflight():
-    """Allow OPTIONS preflight checks for Copilot Studio."""
+    """Handle OPTIONS preflight for CORS."""
     if request.method == "OPTIONS":
         return '', 200
 
