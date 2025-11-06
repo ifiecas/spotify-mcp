@@ -1,12 +1,26 @@
-# server.py
+"""
+Spotify MCP Server 🎧
+=====================
+Author: Ivy Fiecas-Borjal
+
+A Model Context Protocol (MCP) server that connects to the Spotify Web API
+and exposes tools for Microsoft Copilot Studio via mcp-streamable-1.0.
+
+Features:
+    🎵 search_artist_by_name
+    🔝 get_artist_top_tracks
+    💿 get_artist_albums
+"""
+
 import os
-import requests
 import logging
 import multiprocessing
+import requests
 import uvicorn
 from dotenv import load_dotenv
+from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.requests import Request
 from mcp.server.fastmcp import FastMCP
-from starlette.responses import PlainTextResponse
 
 # ───────────────────────────
 # 🔧 Setup
@@ -15,15 +29,17 @@ load_dotenv()
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 
-mcp = FastMCP("🎧 Spotify MCP Server", stateless_http=True)
+if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
+    raise EnvironmentError("❌ Missing Spotify credentials in .env")
+
+mcp = FastMCP("spotify-mcp", stateless_http=True)
 app = mcp.streamable_http_app()
-app.debug = False
 logging.basicConfig(level=logging.INFO)
 
 # ───────────────────────────
-# 🔐 Helper: Spotify Token
+# 🔐 Spotify Token Helper
 # ───────────────────────────
-def get_spotify_token():
+def get_spotify_token() -> str:
     res = requests.post(
         "https://accounts.spotify.com/api/token",
         data={"grant_type": "client_credentials"},
@@ -48,7 +64,14 @@ def search_artist_by_name(artist_name: str, limit: int = 5):
     )
     res.raise_for_status()
     data = res.json()["artists"]["items"]
-    return [{"name": a["name"], "id": a["id"], "url": a["external_urls"]["spotify"]} for a in data]
+    return [
+        {
+            "name": a["name"],
+            "id": a["id"],
+            "url": a["external_urls"]["spotify"]
+        }
+        for a in data
+    ]
 
 
 @mcp.tool()
@@ -63,35 +86,79 @@ def get_artist_top_tracks(artist_id: str, market: str = "US"):
     )
     res.raise_for_status()
     data = res.json()["tracks"]
-    return {"artist_id": artist_id, "tracks": [{"name": t["name"], "url": t["external_urls"]["spotify"]} for t in data]}
+    return {
+        "artist_id": artist_id,
+        "tracks": [
+            {"name": t["name"], "url": t["external_urls"]["spotify"]}
+            for t in data
+        ]
+    }
 
 
 @mcp.tool()
-def get_artist_albums(artist_id: str):
+def get_artist_albums(artist_id: str, limit: int = 10):
     """Fetch albums and singles for an artist."""
     token = get_spotify_token()
     res = requests.get(
         f"https://api.spotify.com/v1/artists/{artist_id}/albums",
         headers={"Authorization": f"Bearer {token}"},
-        params={"include_groups": "album,single", "limit": 20},
+        params={"include_groups": "album,single", "limit": limit},
         timeout=10,
     )
     res.raise_for_status()
     albums = res.json()["items"]
-    return [{"name": a["name"], "release_date": a["release_date"], "id": a["id"]} for a in albums]
-
+    return [
+        {
+            "name": a["name"],
+            "release_date": a["release_date"],
+            "id": a["id"],
+            "url": a["external_urls"]["spotify"]
+        }
+        for a in albums
+    ]
 
 # ───────────────────────────
-# 🌐 Root Route (for Azure)
+# 🌐 Discovery + Health Routes
 # ───────────────────────────
-@app.route("/")
-async def root(request):
-    return PlainTextResponse("🎧 Spotify MCP Server is running ✅")
+@app.route("/", methods=["GET"])
+async def root(request: Request):
+    return JSONResponse({
+        "server": "Spotify MCP Server 🎧",
+        "status": "running",
+        "message": "Welcome to Ivy’s Spotify MCP endpoint!"
+    })
+
+@app.route("/mcp/manifest", methods=["GET"])
+async def manifest(request: Request):
+    """Return MCP's registered tools for Copilot Studio discovery."""
+    return JSONResponse(mcp.describe())
+
+@app.route("/.well-known/ai-plugin.json", methods=["GET"])
+async def plugin_manifest(request: Request):
+    """Expose MCP metadata for Copilot Studio."""
+    return JSONResponse({
+        "schema_version": "v1",
+        "name_for_human": "Spotify MCP Server 🎧",
+        "name_for_model": "spotify-mcp",
+        "description_for_model": (
+            "Connects to Spotify Web API via MCP. "
+            "Provides tools like search_artist_by_name, get_artist_top_tracks, and get_artist_albums."
+        ),
+        "auth": {"type": "none"},
+        "api": {
+            "type": "mcp",
+            "protocol": "mcp-streamable-1.0",
+            "url": "https://spotify-mcp-hha8cccmgnete3fm.australiaeast-01.azurewebsites.net/mcp"
+        },
+        "logo_url": "https://developer.spotify.com/assets/branding-guidelines/icon1.svg",
+        "contact_email": "ivy.fiecas@example.com",
+        "legal_info_url": "https://developer.spotify.com/terms/"
+    })
 
 # ───────────────────────────
-# 🏁 Run on Azure or Local
+# 🏁 Entry Point
 # ───────────────────────────
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 3000))
-    workers = (multiprocessing.cpu_count() * 2) + 1
+    workers = max(1, (multiprocessing.cpu_count() * 2) + 1)
     uvicorn.run("server:app", host="0.0.0.0", port=port, workers=workers)
