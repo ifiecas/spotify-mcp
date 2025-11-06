@@ -287,7 +287,7 @@ async def mcp_config(request):
     return JSONResponse({
         "mcpServers": {
             "spotify-insights": {
-                "url": f"{base_url}/sse",
+                "url": f"{base_url}/mcp/sse",
                 "transportType": "sse"
             }
         }
@@ -305,7 +305,7 @@ async def healthcheck(request):
     return JSONResponse({
         "status": "ok", 
         "spotify_token_status": token_status, 
-        "mcp_sse_endpoint": "/sse",
+        "mcp_endpoint": "/mcp/sse",
         "mcp_config": "/.well-known/mcp.json"
     })
 
@@ -318,7 +318,7 @@ async def root(request):
         "endpoints": {
             "health": "/health",
             "mcp_config": "/.well-known/mcp.json",
-            "mcp_sse": "/sse"
+            "mcp_sse": "/mcp/sse"
         },
         "tools": [
             "search_artist_by_name",
@@ -338,7 +338,7 @@ app = Starlette(
         Route("/", root),
         Route("/health", healthcheck),
         Route("/.well-known/mcp.json", mcp_config, methods=["GET"]),
-        Mount("/sse", app=mcp.get_sse_app()),
+        Mount("/mcp", app=mcp.sse_server()),
     ]
 )
 
@@ -357,6 +357,6 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", "8000"))
     print(f"🚀 Starting Spotify Insights MCP Server on port {port}")
-    print(f"📍 MCP SSE endpoint: http://0.0.0.0:{port}/sse")
+    print(f"📍 MCP SSE endpoint: http://0.0.0.0:{port}/mcp/sse")
     print(f"📍 MCP Config: http://0.0.0.0:{port}/.well-known/mcp.json")
     uvicorn.run(app, host="0.0.0.0", port=port)
