@@ -290,11 +290,13 @@ def get_artist_own_tracks(artist_id: str):
     }
 
 # ─────────────────────────────────────────────
-# 📜 MCP Manifest (for Copilot discovery)
+# 📜 MCP Manifest (GET + POST + OPTIONS)
 # ─────────────────────────────────────────────
-@app.route("/mcp/manifest", methods=["GET", "OPTIONS"])
+@app.route("/mcp/manifest", methods=["GET", "POST", "OPTIONS"])
 def manifest():
-    """Provide MCP manifest in required schema."""
+    """Provide MCP manifest for Copilot Studio discovery."""
+    if request.method == "OPTIONS":
+        return '', 200
     manifest_data = {
         "name": "spotify-mcp-server",
         "version": "1.0.0",
