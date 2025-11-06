@@ -2,16 +2,16 @@
 Spotify MCP Server 🎧
 =====================
 Author: Ivy Fiecas-Borjal
-Description:
-    A Model Context Protocol (MCP) server that connects to the Spotify Web API.
+
+A Model Context Protocol (MCP) server that connects to the Spotify Web API.
 
 Features:
-    🎵 Search artists by name
-    🔝 Get top tracks
-    💿 Fetch albums and tracks
-    🎚️ Get audio features
-    🎼 Summarize artist audio profiles
-    🎤 Fetch solo songs only (filters collaborations)
+    🎵  Search artists by name
+    🔝  Get top tracks
+    💿  Fetch albums and tracks
+    🎚️  Get audio features
+    🎼  Summarize artist audio profiles
+    🎤  Fetch solo songs only (filters collaborations)
 """
 
 import os
@@ -24,12 +24,11 @@ from mcp.server.fastmcp import FastMCP
 # 🔧 Environment Setup
 # ─────────────────────────────────────────────
 load_dotenv()
-
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 
 if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-    print("⚠️ Warning: Missing Spotify credentials — Spotify API calls will fail.")
+    print("⚠️ Warning: Missing Spotify credentials — API tools will fail.")
 
 # ─────────────────────────────────────────────
 # ⚙️ Initialize Flask + MCP
@@ -42,31 +41,34 @@ mcp = FastMCP("spotify-mcp-server")
 # ─────────────────────────────────────────────
 def get_spotify_token() -> str:
     """Get Spotify access token via Client Credentials flow."""
-    res = requests.post(
-        "https://accounts.spotify.com/api/token",
-        data={"grant_type": "client_credentials"},
-        auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET),
-    )
-    res.raise_for_status()
-    return res.json()["access_token"]
+    try:
+        res = requests.post(
+            "https://accounts.spotify.com/api/token",
+            data={"grant_type": "client_credentials"},
+            auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET),
+            timeout=10,
+        )
+        res.raise_for_status()
+        return res.json()["access_token"]
+    except Exception as e:
+        raise RuntimeError(f"Failed to get Spotify token: {e}")
 
 # ─────────────────────────────────────────────
 # 🔍 Tool 1: Search Artist by Name
 # ─────────────────────────────────────────────
 @mcp.tool()
 def search_artist_by_name(artist_name: str, limit: int = 5):
-    """Search for artists by name and return their Spotify IDs."""
+    """Search for artists by name and return basic info."""
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
     res = requests.get(
         "https://api.spotify.com/v1/search",
         headers=headers,
         params={"q": artist_name, "type": "artist", "limit": limit},
+        timeout=10,
     )
     res.raise_for_status()
-    data = res.json().get("artists", {}).get("items", [])
-    if not data:
-        return {"message": f"No artists found for '{artist_name}'."}
+    artists = res.json().get("artists", {}).get("items", [])
     return [
         {
             "name": a["name"],
@@ -76,8 +78,8 @@ def search_artist_by_name(artist_name: str, limit: int = 5):
             "popularity": a["popularity"],
             "url": a["external_urls"]["spotify"],
         }
-        for a in data
-    ]
+        for a in artists
+    ] or {"message": f"No artists found for '{artist_name}'."}
 
 # ─────────────────────────────────────────────
 # 🎵 Tool 2: Get Artist Top Tracks
@@ -91,12 +93,13 @@ def get_artist_top_tracks(artist_id: str, market: str = "US"):
         f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks",
         headers=headers,
         params={"market": market},
+        timeout=10,
     )
     res.raise_for_status()
-    data = res.json().get("tracks", [])
+    tracks = res.json().get("tracks", [])
     return {
         "artist_id": artist_id,
-        "total_tracks": len(data),
+        "total_tracks": len(tracks),
         "tracks": [
             {
                 "id": t["id"],
@@ -106,7 +109,7 @@ def get_artist_top_tracks(artist_id: str, market: str = "US"):
                 "popularity": t["popularity"],
                 "url": t["external_urls"]["spotify"],
             }
-            for t in data
+            for t in tracks
         ],
     }
 
@@ -122,6 +125,7 @@ def get_artist_albums(artist_id: str, include_tracks: bool = True):
         f"https://api.spotify.com/v1/artists/{artist_id}/albums",
         headers=headers,
         params={"include_groups": "album,single", "limit": 50, "market": "US"},
+        timeout=10,
     )
     res.raise_for_status()
     albums_data = res.json().get("items", [])
@@ -136,7 +140,11 @@ def get_artist_albums(artist_id: str, include_tracks: bool = True):
             "url": a["external_urls"]["spotify"],
         }
         if include_tracks:
-            tr = requests.get(f"https://api.spotify.com/v1/albums/{a['id']}/tracks", headers=headers)
+            tr = requests.get(
+                f"https://api.spotify.com/v1/albums/{a['id']}/tracks",
+                headers=headers,
+                timeout=10,
+            )
             tr.raise_for_status()
             album["tracks"] = [
                 {"id": t["id"], "name": t["name"], "track_number": t["track_number"]}
@@ -159,6 +167,7 @@ def get_audio_features(track_ids: list):
         "https://api.spotify.com/v1/audio-features",
         headers=headers,
         params={"ids": ",".join(track_ids[:100])},
+        timeout=10,
     )
     res.raise_for_status()
     data = res.json().get("audio_features", [])
@@ -183,7 +192,7 @@ def get_audio_features(track_ids: list):
 # ─────────────────────────────────────────────
 @mcp.tool()
 def get_artist_audio_profile(artist_id: str):
-    """Fetch and summarize all audio features for an artist’s tracks."""
+    """Summarize average audio features for an artist’s tracks."""
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
     artist = requests.get(f"https://api.spotify.com/v1/artists/{artist_id}", headers=headers)
@@ -194,6 +203,7 @@ def get_artist_audio_profile(artist_id: str):
         f"https://api.spotify.com/v1/artists/{artist_id}/albums",
         headers=headers,
         params={"include_groups": "album,single", "limit": 50, "market": "US"},
+        timeout=10,
     )
     albums.raise_for_status()
     albums = albums.json().get("items", [])
@@ -211,6 +221,7 @@ def get_artist_audio_profile(artist_id: str):
             "https://api.spotify.com/v1/audio-features",
             headers=headers,
             params={"ids": ",".join(batch)},
+            timeout=10,
         )
         feats.raise_for_status()
         all_features.extend([f for f in feats.json().get("audio_features", []) if f])
@@ -247,6 +258,7 @@ def get_artist_own_tracks(artist_id: str):
         f"https://api.spotify.com/v1/artists/{artist_id}/albums",
         headers=headers,
         params={"include_groups": "album,single", "limit": 50, "market": "US"},
+        timeout=10,
     )
     albums.raise_for_status()
     albums = albums.json().get("items", [])
@@ -269,11 +281,33 @@ def get_artist_own_tracks(artist_id: str):
         "artist_name": artist_name,
         "artist_id": artist_id,
         "total_songs": len(songs),
-        "songs": songs[:25]
+        "songs": songs[:25],
     }
 
 # ─────────────────────────────────────────────
-# 🌐 Health Check & OAuth Callback Routes
+# 📜 MCP Manifest Route (for discovery)
+# ─────────────────────────────────────────────
+@app.route("/mcp/manifest")
+def manifest():
+    """List all registered MCP tools for discovery."""
+    tools = [
+        {"name": "search_artist_by_name", "description": "Search for artists by name and return their Spotify IDs."},
+        {"name": "get_artist_top_tracks", "description": "Fetch an artist’s top tracks by popularity."},
+        {"name": "get_artist_albums", "description": "Fetch albums and singles for a given artist."},
+        {"name": "get_audio_features", "description": "Fetch Spotify audio features (energy, danceability, etc.) for given tracks."},
+        {"name": "get_artist_audio_profile", "description": "Summarize the average audio profile of an artist based on all tracks."},
+        {"name": "get_artist_own_tracks", "description": "Fetch only songs where the artist is the primary performer."},
+    ]
+    return jsonify({
+        "server": "Spotify MCP Server 🎧",
+        "version": "1.0.0",
+        "author": "Ivy Fiecas-Borjal",
+        "tools": tools,
+        "azure_ready": True,
+    })
+
+# ─────────────────────────────────────────────
+# 🌐 Health Check & OAuth Callback
 # ─────────────────────────────────────────────
 @app.route("/")
 def index():
@@ -287,7 +321,7 @@ def index():
     return jsonify({
         "status": "running",
         "spotify_token_status": token_status,
-        "tools_registered": "active",  # safer than accessing mcp.tools
+        "tools_registered": "active",
         "azure_ready": True,
     })
 
