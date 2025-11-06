@@ -1,10 +1,10 @@
 """
-Spotify MCP Server 🎧
-=====================
+Spotify Insights MCP Server 🎧
+==============================
 Author: Ivy Fiecas-Borjal
 
 A Model Context Protocol (MCP) server that connects to the Spotify Web API
-and exposes tools for Microsoft Copilot Studio or ChatGPT via Streamable HTTP.
+and provides real-time artist, album, and audio analytics for Microsoft Copilot Studio or ChatGPT.
 """
 
 import os
@@ -29,7 +29,7 @@ if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
 # ─────────────────────────────────────────────
 # ⚙️ Initialize MCP Server
 # ─────────────────────────────────────────────
-mcp = FastMCP("spotify-mcp-server", streamable_http_path="/")
+mcp = FastMCP("spotify-insights-mcp", streamable_http_path="/")
 
 # ─────────────────────────────────────────────
 # 🔐 Helper: Get Spotify Access Token
@@ -282,7 +282,6 @@ def get_artist_own_tracks(artist_id: str):
 # 📜 Manifest Route (for Copilot Discovery)
 # ─────────────────────────────────────────────
 async def manifest(request):
-    """Manifest endpoint for Copilot Studio (supports GET + POST)."""
     tools = [
         {"name": "search_artist_by_name", "description": "Search for artists by name and return Spotify IDs."},
         {"name": "get_artist_top_tracks", "description": "Get an artist’s top tracks by popularity."},
@@ -291,18 +290,14 @@ async def manifest(request):
         {"name": "get_artist_audio_profile", "description": "Summarize the average audio profile for an artist’s songs."},
         {"name": "get_artist_own_tracks", "description": "Fetch only songs where the artist is the primary performer."},
     ]
-    data = {
-        "name": "spotify-mcp-server",
+    return JSONResponse({
+        "name": "spotify-insights-mcp",
         "version": "1.0.0",
-        "description": (
-            "A Model Context Protocol (MCP) server that connects to the Spotify Web API "
-            "and provides real-time artist, album, and audio insights for Copilot Studio."
-        ),
-        "server_url": "https://spotify-mcp-hha8cccmgnete3fm.australiaeast-01.azurewebsites.net",
+        "description": "A Model Context Protocol (MCP) server that connects to the Spotify Web API and provides real-time artist, album, and audio insights for Copilot Studio.",
+        "server_url": "https://spotify-insights-hha8cccmgnete3fm.australiaeast-01.azurewebsites.net",
         "author": "Ivy Fiecas-Borjal",
-        "tools": tools,
-    }
-    return JSONResponse(data)
+        "tools": tools
+    })
 
 # ─────────────────────────────────────────────
 # 🌐 Health + Root Info
@@ -317,7 +312,7 @@ async def healthcheck(request):
 
 async def root(request):
     return JSONResponse({
-        "message": "✅ Spotify MCP Server is running.",
+        "message": "✅ Spotify Insights MCP Server is running.",
         "manifest": "/manifest",
         "health": "/health",
         "mcp": "/mcp"
@@ -349,5 +344,5 @@ app.add_middleware(
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", "8000"))
-    print(f"🚀 Starting Spotify MCP Server on port {port}")
+    print(f"🚀 Starting Spotify Insights MCP Server on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
