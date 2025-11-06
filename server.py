@@ -29,7 +29,7 @@ if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
 # ─────────────────────────────────────────────
 # ⚙️ Initialize MCP Server
 # ─────────────────────────────────────────────
-mcp = FastMCP("spotify-insights-mcp", streamable_http_path="/")
+mcp = FastMCP("spotify-insights-mcp")
 
 # ─────────────────────────────────────────────
 # 🔐 Helper: Get Spotify Access Token
@@ -50,7 +50,7 @@ def get_spotify_token() -> str:
 # ─────────────────────────────────────────────
 @mcp.tool()
 def search_artist_by_name(artist_name: str, limit: int = 5):
-    """Search for artists by name and return basic info."""
+    """Search for artists by name and return basic info including Spotify ID, followers, genres, and popularity."""
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
     res = requests.get(
@@ -80,7 +80,7 @@ def search_artist_by_name(artist_name: str, limit: int = 5):
 # ─────────────────────────────────────────────
 @mcp.tool()
 def get_artist_top_tracks(artist_id: str, market: str = "US"):
-    """Return an artist’s top tracks by popularity."""
+    """Return an artist's top tracks by popularity with album info and release dates."""
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
     res = requests.get(
@@ -112,7 +112,7 @@ def get_artist_top_tracks(artist_id: str, market: str = "US"):
 # ─────────────────────────────────────────────
 @mcp.tool()
 def get_artist_albums(artist_id: str, include_tracks: bool = True):
-    """Fetch albums and singles for a given artist."""
+    """Fetch albums and singles for a given artist with optional track listings."""
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
     res = requests.get(
@@ -151,7 +151,7 @@ def get_artist_albums(artist_id: str, include_tracks: bool = True):
 # ─────────────────────────────────────────────
 @mcp.tool()
 def get_audio_features(track_ids: list):
-    """Fetch Spotify audio features for up to 100 tracks."""
+    """Fetch Spotify audio features for up to 100 tracks including danceability, energy, valence, tempo, and more."""
     if not track_ids:
         raise ValueError("No track IDs provided.")
     token = get_spotify_token()
@@ -185,7 +185,7 @@ def get_audio_features(track_ids: list):
 # ─────────────────────────────────────────────
 @mcp.tool()
 def get_artist_audio_profile(artist_id: str):
-    """Summarize average audio features for an artist’s tracks."""
+    """Summarize average audio features across all of an artist's tracks to understand their musical style."""
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
     artist = requests.get(f"https://api.spotify.com/v1/artists/{artist_id}", headers=headers, timeout=10)
@@ -236,11 +236,11 @@ def get_artist_audio_profile(artist_id: str):
     return {"artist_name": artist_name, "artist_id": artist_id, "summary": summary}
 
 # ─────────────────────────────────────────────
-# 🎤 Tool 6: Get Artist’s Solo Songs
+# 🎤 Tool 6: Get Artist's Solo Songs
 # ─────────────────────────────────────────────
 @mcp.tool()
 def get_artist_own_tracks(artist_id: str):
-    """Fetch only tracks where the artist is the *primary* performer."""
+    """Fetch only tracks where the artist is the primary performer, excluding features and collaborations."""
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
     artist_info = requests.get(f"https://api.spotify.com/v1/artists/{artist_id}", headers=headers, timeout=10)
@@ -279,24 +279,18 @@ def get_artist_own_tracks(artist_id: str):
     }
 
 # ─────────────────────────────────────────────
-# 📜 Manifest Route (for Copilot Discovery)
+# 📜 Well-known MCP Configuration (for Discovery)
 # ─────────────────────────────────────────────
-async def manifest(request):
-    tools = [
-        {"name": "search_artist_by_name", "description": "Search for artists by name and return Spotify IDs."},
-        {"name": "get_artist_top_tracks", "description": "Get an artist’s top tracks by popularity."},
-        {"name": "get_artist_albums", "description": "Fetch albums and singles for a given artist."},
-        {"name": "get_audio_features", "description": "Fetch Spotify audio features for given track IDs."},
-        {"name": "get_artist_audio_profile", "description": "Summarize the average audio profile for an artist’s songs."},
-        {"name": "get_artist_own_tracks", "description": "Fetch only songs where the artist is the primary performer."},
-    ]
+async def mcp_config(request):
+    """Returns MCP configuration in the standard format."""
+    base_url = str(request.base_url).rstrip('/')
     return JSONResponse({
-        "name": "spotify-insights-mcp",
-        "version": "1.0.0",
-        "description": "A Model Context Protocol (MCP) server that connects to the Spotify Web API and provides real-time artist, album, and audio insights for Copilot Studio.",
-        "server_url": "https://spotify-insights-hha8cccmgnete3fm.australiaeast-01.azurewebsites.net",
-        "author": "Ivy Fiecas-Borjal",
-        "tools": tools
+        "mcpServers": {
+            "spotify-insights": {
+                "url": f"{base_url}/sse",
+                "transportType": "sse"
+            }
+        }
     })
 
 # ─────────────────────────────────────────────
@@ -308,14 +302,32 @@ async def healthcheck(request):
         token_status = "OK"
     except Exception as e:
         token_status = f"Error: {e}"
-    return JSONResponse({"status": "ok", "spotify_token_status": token_status, "mcp_endpoint": "/mcp"})
+    return JSONResponse({
+        "status": "ok", 
+        "spotify_token_status": token_status, 
+        "mcp_sse_endpoint": "/sse",
+        "mcp_config": "/.well-known/mcp.json"
+    })
 
 async def root(request):
     return JSONResponse({
         "message": "✅ Spotify Insights MCP Server is running.",
-        "manifest": "/manifest",
-        "health": "/health",
-        "mcp": "/mcp"
+        "name": "spotify-insights-mcp",
+        "version": "1.0.0",
+        "description": "A Model Context Protocol (MCP) server for Spotify Web API integration",
+        "endpoints": {
+            "health": "/health",
+            "mcp_config": "/.well-known/mcp.json",
+            "mcp_sse": "/sse"
+        },
+        "tools": [
+            "search_artist_by_name",
+            "get_artist_top_tracks", 
+            "get_artist_albums",
+            "get_audio_features",
+            "get_artist_audio_profile",
+            "get_artist_own_tracks"
+        ]
     })
 
 # ─────────────────────────────────────────────
@@ -325,9 +337,8 @@ app = Starlette(
     routes=[
         Route("/", root),
         Route("/health", healthcheck),
-        Route("/manifest", manifest, methods=["GET", "POST"]),
-        Route("/mcp", root, methods=["GET"]),
-        Mount("/mcp", app=mcp.streamable_http_app()),
+        Route("/.well-known/mcp.json", mcp_config, methods=["GET"]),
+        Mount("/sse", app=mcp.get_sse_app()),
     ]
 )
 
@@ -336,6 +347,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
 
 # ─────────────────────────────────────────────
@@ -345,4 +357,6 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", "8000"))
     print(f"🚀 Starting Spotify Insights MCP Server on port {port}")
+    print(f"📍 MCP SSE endpoint: http://0.0.0.0:{port}/sse")
+    print(f"📍 MCP Config: http://0.0.0.0:{port}/.well-known/mcp.json")
     uvicorn.run(app, host="0.0.0.0", port=port)
