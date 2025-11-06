@@ -3,7 +3,8 @@ Spotify MCP Server 🎧
 =====================
 Author: Ivy Fiecas-Borjal
 
-A Model Context Protocol (MCP) server that connects to the Spotify Web API.
+A Model Context Protocol (MCP) server that connects to the Spotify Web API
+and exposes data as MCP tools for use in Copilot Studio or ChatGPT.
 
 Features:
     🎵  Search artists by name
@@ -18,6 +19,7 @@ import os
 import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 from mcp.server.fastmcp import FastMCP
 
 # ─────────────────────────────────────────────
@@ -34,6 +36,7 @@ if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
 # ⚙️ Initialize Flask + MCP
 # ─────────────────────────────────────────────
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "*"}})  # enable CORS for Copilot Studio
 mcp = FastMCP("spotify-mcp-server")
 
 # ─────────────────────────────────────────────
@@ -287,7 +290,7 @@ def get_artist_own_tracks(artist_id: str):
 # ─────────────────────────────────────────────
 # 📜 MCP Manifest Route (for discovery)
 # ─────────────────────────────────────────────
-@app.route("/mcp/manifest")
+@app.route("/mcp/manifest", methods=["GET", "OPTIONS"])
 def manifest():
     """List all registered MCP tools for discovery."""
     tools = [
@@ -309,7 +312,7 @@ def manifest():
 # ─────────────────────────────────────────────
 # 🌐 Health Check & OAuth Callback
 # ─────────────────────────────────────────────
-@app.route("/")
+@app.route("/", methods=["GET", "OPTIONS"])
 def index():
     """Health check for Azure deployment."""
     try:
@@ -325,7 +328,7 @@ def index():
         "azure_ready": True,
     })
 
-@app.route("/callback")
+@app.route("/callback", methods=["GET", "OPTIONS"])
 def callback():
     """Handle Spotify OAuth callback (for future user-based flows)."""
     code = request.args.get("code")
@@ -337,6 +340,12 @@ def callback():
 # ─────────────────────────────────────────────
 # 🏁 Entry Point
 # ─────────────────────────────────────────────
+@app.before_request
+def handle_preflight():
+    """Allow OPTIONS preflight checks for Copilot Studio."""
+    if request.method == "OPTIONS":
+        return '', 200
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     debug_mode = os.getenv("DEBUG", "false").lower() == "true"
