@@ -1,5 +1,4 @@
-mcp[cli]
-starlette
-uvicorn[standard]
-python-dotenv
 requests
+python-dotenv
+mcp
+flask
