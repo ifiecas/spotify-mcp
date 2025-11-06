@@ -1,7 +1,7 @@
-swagger: "2.0"
+swagger: '2.0'
 info:
   title: Spotify MCP Server
-  description: MCP endpoint exposing Spotify Web API tools
+  description: Model Context Protocol server for Spotify API
   version: 1.0.0
 host: spotify-mcp-hha8cccmgnete3fm.australiaeast-01.azurewebsites.net
 basePath: /
@@ -10,13 +10,13 @@ schemes:
 paths:
   /mcp:
     post:
-      summary: Invoke Spotify MCP
+      summary: Spotify MCP Server
       operationId: InvokeMCP
       x-ms-agentic-protocol: mcp-streamable-1.0
-      consumes:
-        - application/json
       produces:
+        - text/event-stream
+      consumes:
         - application/json
       responses:
         '200':
-          description: Successful MCP response
+          description: OK
