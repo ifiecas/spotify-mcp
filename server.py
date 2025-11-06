@@ -4,27 +4,20 @@ Spotify MCP Server 🎧
 Author: Ivy Fiecas-Borjal
 Description:
     A Model Context Protocol (MCP) server that connects to the Spotify Web API.
-    Exposes tools to:
-      🎵 Search artists by name
-      🔝 Get top tracks
-      💿 Fetch albums and tracks
-      🎚️ Get audio features
-      🎼 Summarize artist audio profiles
-      🎤 Fetch only solo songs (filters out collaborations)
 
-Setup:
-    1. Create a `.env` file with:
-        SPOTIFY_CLIENT_ID=your_client_id
-        SPOTIFY_CLIENT_SECRET=your_client_secret
-    2. Install dependencies:
-        pip install requests python-dotenv mcp
-    3. Run in dev mode:
-        mcp dev server.py
+Features:
+    🎵 Search artists by name
+    🔝 Get top tracks
+    💿 Fetch albums and tracks
+    🎚️ Get audio features
+    🎼 Summarize artist audio profiles
+    🎤 Fetch solo songs only (filters collaborations)
 """
 
 import os
 import requests
 from dotenv import load_dotenv
+from flask import Flask, jsonify
 from mcp.server.fastmcp import FastMCP
 
 # ─────────────────────────────────────────────
@@ -35,13 +28,12 @@ SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 
 if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-    raise EnvironmentError(
-        "❌ Missing Spotify credentials. Add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to your .env file."
-    )
+    print("⚠️ Warning: Missing Spotify credentials — API tools will fail without them.")
 
 # ─────────────────────────────────────────────
-# ⚙️ Initialize MCP Server
+# ⚙️ Initialize Flask + MCP
 # ─────────────────────────────────────────────
+app = Flask(__name__)
 mcp = FastMCP("spotify-mcp")
 
 # ─────────────────────────────────────────────
@@ -102,22 +94,24 @@ def get_artist_top_tracks(artist_id: str, market: str = "US"):
     )
     res.raise_for_status()
     data = res.json().get("tracks", [])
-
-    tracks = [
-        {
-            "id": t["id"],
-            "name": t["name"],
-            "album": t["album"]["name"],
-            "release_date": t["album"]["release_date"],
-            "popularity": t["popularity"],
-            "url": t["external_urls"]["spotify"],
-        }
-        for t in data
-    ]
-    return {"artist_id": artist_id, "total_tracks": len(tracks), "tracks": tracks}
+    return {
+        "artist_id": artist_id,
+        "total_tracks": len(data),
+        "tracks": [
+            {
+                "id": t["id"],
+                "name": t["name"],
+                "album": t["album"]["name"],
+                "release_date": t["album"]["release_date"],
+                "popularity": t["popularity"],
+                "url": t["external_urls"]["spotify"],
+            }
+            for t in data
+        ],
+    }
 
 # ─────────────────────────────────────────────
-# 💿 Tool 3: Get Artist Albums
+# 💿 Tool 3: Get Artist Albums (with optional tracks)
 # ─────────────────────────────────────────────
 @mcp.tool()
 def get_artist_albums(artist_id: str, include_tracks: bool = True):
@@ -168,22 +162,24 @@ def get_audio_features(track_ids: list):
     )
     res.raise_for_status()
     data = res.json().get("audio_features", [])
-    features = [
-        {
-            "id": f["id"],
-            "danceability": f["danceability"],
-            "energy": f["energy"],
-            "valence": f["valence"],
-            "instrumentalness": f["instrumentalness"],
-            "speechiness": f["speechiness"],
-            "tempo": f["tempo"],
-        }
-        for f in data if f
-    ]
-    return {"count": len(features), "features": features}
+    return {
+        "count": len(data),
+        "features": [
+            {
+                "id": f["id"],
+                "danceability": f["danceability"],
+                "energy": f["energy"],
+                "valence": f["valence"],
+                "instrumentalness": f["instrumentalness"],
+                "speechiness": f["speechiness"],
+                "tempo": f["tempo"],
+            }
+            for f in data if f
+        ],
+    }
 
 # ─────────────────────────────────────────────
-# 🎼 Tool 5: Get Artist Audio Profile (Summary)
+# 🎼 Tool 5: Get Artist Audio Profile Summary
 # ─────────────────────────────────────────────
 @mcp.tool()
 def get_artist_audio_profile(artist_id: str):
@@ -223,9 +219,6 @@ def get_artist_audio_profile(artist_id: str):
         feats.raise_for_status()
         all_features.extend([f for f in feats.json().get("audio_features", []) if f])
 
-    if not all_features:
-        return {"message": "No audio features found."}
-
     def avg(field):
         vals = [f[field] for f in all_features if f.get(field)]
         return round(sum(vals) / len(vals), 3) if vals else 0.0
@@ -240,15 +233,10 @@ def get_artist_audio_profile(artist_id: str):
         "total_tracks": len(all_features),
     }
 
-    return {
-        "artist_name": artist_name,
-        "artist_id": artist_id,
-        "summary": summary,
-        "sample_features": all_features[:5],
-    }
+    return {"artist_name": artist_name, "artist_id": artist_id, "summary": summary}
 
 # ─────────────────────────────────────────────
-# 🎤 Tool 6: Get Artist’s Own Songs Only
+# 🎤 Tool 6: Get Artist’s Solo Songs
 # ─────────────────────────────────────────────
 @mcp.tool()
 def get_artist_own_tracks(artist_id: str):
@@ -281,8 +269,6 @@ def get_artist_own_tracks(artist_id: str):
                     "release_date": a["release_date"],
                     "url": t["external_urls"]["spotify"]
                 })
-    if not songs:
-        return {"message": f"No solo songs found for {artist_name}."}
 
     return {
         "artist_name": artist_name,
@@ -292,19 +278,26 @@ def get_artist_own_tracks(artist_id: str):
     }
 
 # ─────────────────────────────────────────────
-# 🏁 Run MCP Server
+# 🌐 Minimal Flask Route (for Azure health check)
+# ─────────────────────────────────────────────
+@app.route("/")
+def index():
+    return jsonify({
+        "status": "ok",
+        "message": "Spotify MCP Server is running 🎵",
+        "tools": len(mcp.tools),
+    })
+
+# ─────────────────────────────────────────────
+# 🏁 Entry Point
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
-    print("🎧 Spotify MCP Server running — open MCP Inspector at http://localhost:6274")
-    mcp.run()
-
-# If using Flask or FastMCP internally, make sure it's exposed like this:
-app = server.app if hasattr(server, "app") else None
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    if app:
-        app.run(host="0.0.0.0", port=port)
+    # Local MCP dev mode
+    if os.getenv("RUN_MCP_DEV"):
+        print("🎧 Spotify MCP Server running — open MCP Inspector at http://localhost:6274")
+        mcp.run()
     else:
-        print("❌ No app found to run")
-
+        # Azure entry point
+        port = int(os.environ.get("PORT", 8000))
+        print(f"🚀 Starting Flask app on port {port}")
+        app.run(host="0.0.0.0", port=port)
