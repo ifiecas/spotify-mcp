@@ -3,28 +3,33 @@ Spotify MCP Server 🎧
 =====================
 Author: Ivy Fiecas-Borjal
 Description:
-    A Model Context Protocol (MCP) server that connects to the Spotify Web API.
-    Exposes tools to:
-      🎵 Search artists by name
-      🔝 Get top tracks
-      💿 Fetch albums and tracks
-      🎚️ Get audio features
-      🎼 Summarize artist audio profiles
-      🎤 Fetch only solo songs (filters out collaborations)
+    A Model Context Protocol (MCP) server that connects to the Spotify Web API
+    and exposes tools usable by Microsoft Copilot Studio, Logic Apps, or Azure AI.
+
+Tools Exposed:
+    🎵 search_artist_by_name     → Find artists by name
+    🔝 get_artist_top_tracks      → Retrieve top tracks
+    💿 get_artist_albums          → List albums & tracks
+    🎚️ get_audio_features         → Fetch track audio features
+    🎼 get_artist_audio_profile   → Summarize artist audio profile
+    🎤 get_artist_own_tracks      → Filter solo songs only
 
 Setup:
     1. Create a `.env` file with:
         SPOTIFY_CLIENT_ID=your_client_id
         SPOTIFY_CLIENT_SECRET=your_client_secret
     2. Install dependencies:
-        pip install requests python-dotenv mcp
-    3. Run in dev mode:
-        mcp dev server.py
+        pip install requests python-dotenv mcp flask
+    3. Local test:
+        python server.py
+    4. Azure Web App will serve from:
+        https://spotify-mcp-hha8cccmgnete3fm.australiaeast-01.azurewebsites.net
 """
 
 import os
 import requests
 from dotenv import load_dotenv
+from flask import Flask, request, jsonify
 from mcp.server.fastmcp import FastMCP
 
 # ─────────────────────────────────────────────
@@ -292,8 +297,28 @@ def get_artist_own_tracks(artist_id: str):
     }
 
 # ─────────────────────────────────────────────
-# 🏁 Run MCP Server
+# 🌐 Flask App for Azure Hosting
+# ─────────────────────────────────────────────
+app = Flask(__name__)
+
+@app.route("/", methods=["GET"])
+def health_check():
+    """Health check endpoint for Azure."""
+    return jsonify({
+        "server": "Spotify MCP Server 🎧",
+        "status": "running",
+        "message": "Welcome to Ivy’s Spotify MCP endpoint!"
+    })
+
+@app.route("/mcp", methods=["POST"])
+def invoke_mcp():
+    """Main MCP endpoint for Copilot Studio / Power Apps."""
+    return mcp.handle_http(request)
+
+# ─────────────────────────────────────────────
+# 🏁 Entry Point
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
-    print("🎧 Spotify MCP Server running — open MCP Inspector at http://localhost:6274")
-    mcp.run()
+    port = int(os.environ.get("PORT", 8000))
+    print(f"🎧 Spotify MCP Server running on port {port}")
+    app.run(host="0.0.0.0", port=port)
