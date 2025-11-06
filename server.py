@@ -292,12 +292,7 @@ def index():
 # 🏁 Entry Point
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
-    # Local MCP dev mode
-    if os.getenv("RUN_MCP_DEV"):
-        print("🎧 Spotify MCP Server running — open MCP Inspector at http://localhost:6274")
-        mcp.run()
-    else:
-        # Azure entry point
-        port = int(os.environ.get("PORT", 8000))
-        print(f"🚀 Starting Flask app on port {port}")
-        app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 8000))
+    debug_mode = os.getenv("DEBUG", "false").lower() == "true"
+    print(f"🚀 Starting Flask app on port {port} (debug={debug_mode})")
+    app.run(host="0.0.0.0", port=port, debug=debug_mode)
