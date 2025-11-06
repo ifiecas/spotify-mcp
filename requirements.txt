@@ -1,5 +1,5 @@
-Flask==3.0.3
+mcp[cli]
+starlette
+uvicorn[standard]
 python-dotenv
 requests
-mcp
-flask-cors
