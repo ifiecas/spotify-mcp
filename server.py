@@ -288,6 +288,7 @@ def health_check():
     })
 
 @app.route("/.well-known/ai-plugin.json", methods=["GET"])
+@app.route("/well-known/ai-plugin.json", methods=["GET"])
 def plugin_manifest():
     """Expose MCP metadata for Copilot Studio discovery."""
     return jsonify({
