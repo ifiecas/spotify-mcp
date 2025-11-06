@@ -17,7 +17,7 @@ Features:
 import os
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from mcp.server.fastmcp import FastMCP
 
 # ─────────────────────────────────────────────
@@ -66,7 +66,6 @@ def search_artist_by_name(artist_name: str, limit: int = 5):
     data = res.json().get("artists", {}).get("items", [])
     if not data:
         return {"message": f"No artists found for '{artist_name}'."}
-
     return [
         {
             "name": a["name"],
@@ -186,7 +185,6 @@ def get_artist_audio_profile(artist_id: str):
     """Fetch and summarize all audio features for an artist’s tracks."""
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
-
     artist = requests.get(f"https://api.spotify.com/v1/artists/{artist_id}", headers=headers)
     artist.raise_for_status()
     artist_name = artist.json().get("name", "Unknown Artist")
@@ -205,8 +203,6 @@ def get_artist_audio_profile(artist_id: str):
         tr.raise_for_status()
         for t in tr.json().get("items", []):
             track_ids.append(t["id"])
-    if not track_ids:
-        return {"message": "No tracks found for this artist."}
 
     all_features = []
     for i in range(0, len(track_ids), 100):
@@ -243,7 +239,6 @@ def get_artist_own_tracks(artist_id: str):
     """Fetch only tracks where the artist is the *primary* performer."""
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
-
     artist_info = requests.get(f"https://api.spotify.com/v1/artists/{artist_id}", headers=headers)
     artist_info.raise_for_status()
     artist_name = artist_info.json().get("name", "Unknown Artist")
@@ -278,15 +273,32 @@ def get_artist_own_tracks(artist_id: str):
     }
 
 # ─────────────────────────────────────────────
-# 🌐 Minimal Flask Route (for Azure health check)
+# 🌐 Health Check & OAuth Callback Routes
 # ─────────────────────────────────────────────
 @app.route("/")
 def index():
+    """Health check for Azure deployment."""
+    try:
+        token = get_spotify_token()
+        token_status = "OK" if token else "Failed"
+    except Exception as e:
+        token_status = f"Error: {str(e)}"
+
     return jsonify({
-        "status": "ok",
-        "message": "Spotify MCP Server is running 🎵",
-        "tools": len(mcp.tools),
+        "status": "running",
+        "spotify_token_status": token_status,
+        "tools_registered": len(mcp.tools),
+        "azure_ready": True,
     })
+
+@app.route("/callback")
+def callback():
+    """Handle Spotify OAuth callback (for future user-based flows)."""
+    code = request.args.get("code")
+    error = request.args.get("error")
+    if error:
+        return jsonify({"status": "error", "message": error})
+    return jsonify({"status": "ok", "code": code or "none", "message": "Callback received successfully."})
 
 # ─────────────────────────────────────────────
 # 🏁 Entry Point
