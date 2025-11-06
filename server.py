@@ -24,17 +24,18 @@ from mcp.server.fastmcp import FastMCP
 # 🔧 Environment Setup
 # ─────────────────────────────────────────────
 load_dotenv()
+
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 
 if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-    print("⚠️ Warning: Missing Spotify credentials — API tools will fail without them.")
+    print("⚠️ Warning: Missing Spotify credentials — Spotify API calls will fail.")
 
 # ─────────────────────────────────────────────
 # ⚙️ Initialize Flask + MCP
 # ─────────────────────────────────────────────
 app = Flask(__name__)
-mcp = FastMCP("spotify-mcp")
+mcp = FastMCP("spotify-mcp-server")
 
 # ─────────────────────────────────────────────
 # 🔐 Helper: Get Spotify Access Token
@@ -110,7 +111,7 @@ def get_artist_top_tracks(artist_id: str, market: str = "US"):
     }
 
 # ─────────────────────────────────────────────
-# 💿 Tool 3: Get Artist Albums (with optional tracks)
+# 💿 Tool 3: Get Artist Albums
 # ─────────────────────────────────────────────
 @mcp.tool()
 def get_artist_albums(artist_id: str, include_tracks: bool = True):
@@ -145,7 +146,7 @@ def get_artist_albums(artist_id: str, include_tracks: bool = True):
     return {"artist_id": artist_id, "albums": albums}
 
 # ─────────────────────────────────────────────
-# 🎚️ Tool 4: Get Audio Features by Track IDs
+# 🎚️ Tool 4: Get Audio Features
 # ─────────────────────────────────────────────
 @mcp.tool()
 def get_audio_features(track_ids: list):
@@ -178,7 +179,7 @@ def get_audio_features(track_ids: list):
     }
 
 # ─────────────────────────────────────────────
-# 🎼 Tool 5: Get Artist Audio Profile Summary
+# 🎼 Tool 5: Artist Audio Profile Summary
 # ─────────────────────────────────────────────
 @mcp.tool()
 def get_artist_audio_profile(artist_id: str):
@@ -201,8 +202,7 @@ def get_artist_audio_profile(artist_id: str):
     for a in albums:
         tr = requests.get(f"https://api.spotify.com/v1/albums/{a['id']}/tracks", headers=headers)
         tr.raise_for_status()
-        for t in tr.json().get("items", []):
-            track_ids.append(t["id"])
+        track_ids += [t["id"] for t in tr.json().get("items", [])]
 
     all_features = []
     for i in range(0, len(track_ids), 100):
@@ -287,7 +287,7 @@ def index():
     return jsonify({
         "status": "running",
         "spotify_token_status": token_status,
-        "tools_registered": len(mcp.tools),
+        "tools_registered": "active",  # safer than accessing mcp.tools
         "azure_ready": True,
     })
 
@@ -306,5 +306,5 @@ def callback():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     debug_mode = os.getenv("DEBUG", "false").lower() == "true"
-    print(f"🚀 Starting Flask app on port {port} (debug={debug_mode})")
+    print(f"🚀 Starting Spotify MCP Server on port {port} (debug={debug_mode})")
     app.run(host="0.0.0.0", port=port, debug=debug_mode)
