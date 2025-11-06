@@ -282,6 +282,7 @@ def get_artist_own_tracks(artist_id: str):
 # 📜 Manifest Route (for Copilot Discovery)
 # ─────────────────────────────────────────────
 async def manifest(request):
+    """Manifest endpoint for Copilot Studio (supports GET + POST)."""
     tools = [
         {"name": "search_artist_by_name", "description": "Search for artists by name and return Spotify IDs."},
         {"name": "get_artist_top_tracks", "description": "Get an artist’s top tracks by popularity."},
@@ -290,15 +291,21 @@ async def manifest(request):
         {"name": "get_artist_audio_profile", "description": "Summarize the average audio profile for an artist’s songs."},
         {"name": "get_artist_own_tracks", "description": "Fetch only songs where the artist is the primary performer."},
     ]
-    return JSONResponse({
+    data = {
         "name": "spotify-mcp-server",
         "version": "1.0.0",
-        "description": "A Model Context Protocol server that connects to the Spotify Web API for music insights.",
-        "tools": tools
-    })
+        "description": (
+            "A Model Context Protocol (MCP) server that connects to the Spotify Web API "
+            "and provides real-time artist, album, and audio insights for Copilot Studio."
+        ),
+        "server_url": "https://spotify-mcp-hha8cccmgnete3fm.australiaeast-01.azurewebsites.net",
+        "author": "Ivy Fiecas-Borjal",
+        "tools": tools,
+    }
+    return JSONResponse(data)
 
 # ─────────────────────────────────────────────
-# 🌐 Health Endpoint (for Azure)
+# 🌐 Health + Root Info
 # ─────────────────────────────────────────────
 async def healthcheck(request):
     try:
@@ -308,29 +315,27 @@ async def healthcheck(request):
         token_status = f"Error: {e}"
     return JSONResponse({"status": "ok", "spotify_token_status": token_status, "mcp_endpoint": "/mcp"})
 
-# ─────────────────────────────────────────────
-# 🩵 Friendly GET handler for /mcp
-# ─────────────────────────────────────────────
-async def mcp_info(request):
+async def root(request):
     return JSONResponse({
-        "message": "Spotify MCP endpoint is active. Use POST for streaming MCP tools.",
+        "message": "✅ Spotify MCP Server is running.",
         "manifest": "/manifest",
-        "status": "ok"
+        "health": "/health",
+        "mcp": "/mcp"
     })
 
 # ─────────────────────────────────────────────
-# 🧩 Starlette App: Mount MCP + Manifest + Health
+# 🧩 Starlette App
 # ─────────────────────────────────────────────
 app = Starlette(
     routes=[
+        Route("/", root),
         Route("/health", healthcheck),
-        Route("/manifest", manifest),
-        Route("/mcp", mcp_info, methods=["GET"]),  # ✅ Added for Copilot Studio compatibility
+        Route("/manifest", manifest, methods=["GET", "POST"]),
+        Route("/mcp", root, methods=["GET"]),
         Mount("/mcp", app=mcp.streamable_http_app()),
     ]
 )
 
-# Enable CORS for Copilot Studio
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
