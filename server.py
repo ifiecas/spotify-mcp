@@ -4,17 +4,17 @@ Spotify MCP Server 🎧
 Author: Ivy Fiecas-Borjal
 
 A Model Context Protocol (MCP) server that connects to the Spotify Web API
-and exposes tools for Microsoft Copilot Studio / ChatGPT via Streamable HTTP.
+and exposes tools for Microsoft Copilot Studio or ChatGPT via Streamable HTTP.
 """
 
 import os
 import requests
 from dotenv import load_dotenv
-
 from mcp.server.fastmcp import FastMCP
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route, Mount
+from starlette.middleware.cors import CORSMiddleware
 
 # ─────────────────────────────────────────────
 # 🔧 Environment Setup
@@ -24,17 +24,13 @@ SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 
 if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-    print("⚠️ Warning: Missing SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET – tools will fail.")
+    print("⚠️ Warning: Missing SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET – Spotify tools will fail.")
 
 # ─────────────────────────────────────────────
-# ⚙️ Initialize MCP server
+# ⚙️ Initialize MCP Server
 # ─────────────────────────────────────────────
-# streamable_http_path "/mcp" means the MCP endpoint will be:
-#   https://<your-site>.azurewebsites.net/mcp
-mcp = FastMCP(
-    "spotify-mcp-server",
-    streamable_http_path="/mcp",  # mount path inside the Starlette app
-)
+# Use streamable_http_path="/" because we will mount it under /mcp externally.
+mcp = FastMCP("spotify-mcp-server", streamable_http_path="/")
 
 
 # ─────────────────────────────────────────────
@@ -201,11 +197,7 @@ def get_artist_audio_profile(artist_id: str):
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
 
-    artist = requests.get(
-        f"https://api.spotify.com/v1/artists/{artist_id}",
-        headers=headers,
-        timeout=10,
-    )
+    artist = requests.get(f"https://api.spotify.com/v1/artists/{artist_id}", headers=headers, timeout=10)
     artist.raise_for_status()
     artist_name = artist.json().get("name", "Unknown Artist")
 
@@ -218,13 +210,9 @@ def get_artist_audio_profile(artist_id: str):
     albums.raise_for_status()
     albums = albums.json().get("items", [])
 
-    track_ids: list[str] = []
+    track_ids = []
     for a in albums:
-        tr = requests.get(
-            f"https://api.spotify.com/v1/albums/{a['id']}/tracks",
-            headers=headers,
-            timeout=10,
-        )
+        tr = requests.get(f"https://api.spotify.com/v1/albums/{a['id']}/tracks", headers=headers, timeout=10)
         tr.raise_for_status()
         track_ids += [t["id"] for t in tr.json().get("items", [])]
 
@@ -240,7 +228,7 @@ def get_artist_audio_profile(artist_id: str):
         feats.raise_for_status()
         all_features.extend([f for f in feats.json().get("audio_features", []) if f])
 
-    def avg(field: str) -> float:
+    def avg(field):
         vals = [f[field] for f in all_features if f.get(field) is not None]
         return round(sum(vals) / len(vals), 3) if vals else 0.0
 
@@ -265,12 +253,7 @@ def get_artist_own_tracks(artist_id: str):
     """Fetch only tracks where the artist is the *primary* performer."""
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
-
-    artist_info = requests.get(
-        f"https://api.spotify.com/v1/artists/{artist_id}",
-        headers=headers,
-        timeout=10,
-    )
+    artist_info = requests.get(f"https://api.spotify.com/v1/artists/{artist_id}", headers=headers, timeout=10)
     artist_info.raise_for_status()
     artist_name = artist_info.json().get("name", "Unknown Artist")
 
@@ -285,11 +268,7 @@ def get_artist_own_tracks(artist_id: str):
 
     songs = []
     for a in albums:
-        tr = requests.get(
-            f"https://api.spotify.com/v1/albums/{a['id']}/tracks",
-            headers=headers,
-            timeout=10,
-        )
+        tr = requests.get(f"https://api.spotify.com/v1/albums/{a['id']}/tracks", headers=headers, timeout=10)
         tr.raise_for_status()
         for t in tr.json().get("items", []):
             if t["artists"] and t["artists"][0]["name"].lower() == artist_name.lower():
@@ -312,36 +291,37 @@ def get_artist_own_tracks(artist_id: str):
 
 
 # ─────────────────────────────────────────────
-# 🌐 Small health endpoint (for you / Azure)
+# 🌐 Health Endpoint (for Azure)
 # ─────────────────────────────────────────────
 async def healthcheck(request):
-    """Simple JSON healthcheck. Does NOT speak MCP."""
-    ok = True
+    """Simple JSON health check."""
     try:
         _ = get_spotify_token()
         token_status = "OK"
-    except Exception as e:  # noqa: BLE001
-        ok = False
+    except Exception as e:
         token_status = f"Error: {e}"
-
     return JSONResponse(
-        {
-            "status": "ok" if ok else "degraded",
-            "spotify_token_status": token_status,
-            "mcp_endpoint": "/mcp",
-        }
+        {"status": "ok", "spotify_token_status": token_status, "mcp_endpoint": "/mcp"}
     )
 
 
 # ─────────────────────────────────────────────
-# 🧩 Starlette app: mount MCP + health check
+# 🧩 Starlette App: Mount MCP + Health Check
 # ─────────────────────────────────────────────
 app = Starlette(
     routes=[
         Route("/health", healthcheck),
-        # This mounts the MCP streamable-http server at /mcp
-        Mount("/", app=mcp.streamable_http_app()),
+        # ✅ MCP server is accessible at /mcp
+        Mount("/mcp", app=mcp.streamable_http_app()),
     ]
+)
+
+# Allow CORS for Copilot Studio
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
