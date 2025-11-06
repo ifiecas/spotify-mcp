@@ -297,3 +297,14 @@ def get_artist_own_tracks(artist_id: str):
 if __name__ == "__main__":
     print("🎧 Spotify MCP Server running — open MCP Inspector at http://localhost:6274")
     mcp.run()
+
+# If using Flask or FastMCP internally, make sure it's exposed like this:
+app = server.app if hasattr(server, "app") else None
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    if app:
+        app.run(host="0.0.0.0", port=port)
+    else:
+        print("❌ No app found to run")
+
