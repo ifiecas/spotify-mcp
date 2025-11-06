@@ -282,7 +282,6 @@ def get_artist_own_tracks(artist_id: str):
 # 📜 Manifest Route (for Copilot Discovery)
 # ─────────────────────────────────────────────
 async def manifest(request):
-    """Public manifest for Copilot Studio."""
     tools = [
         {"name": "search_artist_by_name", "description": "Search for artists by name and return Spotify IDs."},
         {"name": "get_artist_top_tracks", "description": "Get an artist’s top tracks by popularity."},
@@ -302,7 +301,6 @@ async def manifest(request):
 # 🌐 Health Endpoint (for Azure)
 # ─────────────────────────────────────────────
 async def healthcheck(request):
-    """Simple JSON health check."""
     try:
         _ = get_spotify_token()
         token_status = "OK"
@@ -311,12 +309,23 @@ async def healthcheck(request):
     return JSONResponse({"status": "ok", "spotify_token_status": token_status, "mcp_endpoint": "/mcp"})
 
 # ─────────────────────────────────────────────
+# 🩵 Friendly GET handler for /mcp
+# ─────────────────────────────────────────────
+async def mcp_info(request):
+    return JSONResponse({
+        "message": "Spotify MCP endpoint is active. Use POST for streaming MCP tools.",
+        "manifest": "/manifest",
+        "status": "ok"
+    })
+
+# ─────────────────────────────────────────────
 # 🧩 Starlette App: Mount MCP + Manifest + Health
 # ─────────────────────────────────────────────
 app = Starlette(
     routes=[
         Route("/health", healthcheck),
-        Route("/manifest", manifest),  # ✅ Fix: Manifest is outside /mcp mount
+        Route("/manifest", manifest),
+        Route("/mcp", mcp_info, methods=["GET"]),  # ✅ Added for Copilot Studio compatibility
         Mount("/mcp", app=mcp.streamable_http_app()),
     ]
 )
