@@ -1,5 +1,5 @@
+fastapi
 uvicorn
-starlette
-mcp
-python-dotenv
 requests
+python-dotenv
+mcp
