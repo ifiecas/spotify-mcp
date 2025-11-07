@@ -1,7 +1,4 @@
-fastapi
-uvicorn
+flask
 requests
 python-dotenv
 mcp
-starlette
-gunicorn
