@@ -4,18 +4,38 @@ import requests
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
+from starlette.applications import Starlette
+from starlette.responses import PlainTextResponse
+from starlette.routing import Route, Mount
+
+# Load secrets (App Service will inject env vars; local dev uses .env)
 load_dotenv()
-SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
-SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
-if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
+CID = os.getenv("SPOTIFY_CLIENT_ID")
+SEC = os.getenv("SPOTIFY_CLIENT_SECRET")
+if not CID or not SEC:
     raise EnvironmentError("Missing SPOTIFY_CLIENT_ID/SECRET.")
 
+# Import your existing tools by constructing the same FastMCP and defining tools
+# You can either:
+# 1) paste all @mcp.tool() functions here, or
+# 2) import from server.py if you split tools into a module
 mcp = FastMCP("spotify-mcp")
 
-# --- (your tools exactly as in server.py) ---
-# paste all @mcp.tool() functions here unchanged
-# --------------------------------------------
+# ── paste all your @mcp.tool() functions from server.py below ──
+# (identical definitions; do not include the mcp.run() block)
+# ---------------------------------------------------------------
 
-# ✅ Expose as an ASGI app that serves MCP over WebSocket at /mcp
-# (Method name may vary by version; common ones are `asgi_app()` or `websocket_asgi()`)
-app = mcp.asgi_app(path="/mcp")
+# Health for Azure probes
+def healthz(request):
+    return PlainTextResponse("ok")
+
+# ✅ FastMCP ASGI app mounted at /mcp (method name may be `asgi_app()` in your version)
+mcp_asgi = mcp.asgi_app(path="/mcp")
+
+# Compose final Starlette app with both /healthz and /mcp
+app = Starlette(
+    routes=[
+        Route("/healthz", healthz),
+        Mount("/mcp", app=mcp_asgi),
+    ]
+)
