@@ -1,0 +1,37 @@
+name: Build and Deploy to Azure Web App (Docker)
+
+on:
+  push:
+    branches:
+      - main   # Change if your default branch is different
+
+env:
+  AZURE_WEBAPP_NAME: spotify-mcp-ivy        # Your Azure Web App name
+  AZURE_RESOURCE_GROUP: rg-mcp-spotify      # Your resource group name
+  AZURE_REGION: eastus                      # Change to your region
+  DOCKERFILE_PATH: Dockerfile
+  PORT: 8000
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Log in to Azure
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Build and push image to Azure Web App directly
+      - name: Build and deploy Docker image to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          slot-name: production
+          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
+          images: 'DOCKER|${{ github.repository }}:${{ github.sha }}'
