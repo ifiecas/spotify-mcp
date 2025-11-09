@@ -2,9 +2,10 @@
 Spotify MCP Server 🎧
 =====================
 Author: Ivy Fiecas-Borjal
+
 Description:
     A Model Context Protocol (MCP) server that connects to the Spotify Web API.
-    Exposes tools for Copilot Studio or ChatGPT MCP Inspector.
+    Designed for use with Copilot Studio or ChatGPT MCP Inspector.
 
     Tools:
       🎵 search_artist_by_name
@@ -50,7 +51,7 @@ def get_spotify_token() -> str:
     return res.json()["access_token"]
 
 # ─────────────────────────────────────────────
-# 🔍 Tool 1: Search Artist by Name
+# 🎵 Tool 1: Search Artist by Name
 # ─────────────────────────────────────────────
 @mcp.tool()
 def search_artist_by_name(artist_name: str, limit: int = 5):
@@ -78,7 +79,7 @@ def search_artist_by_name(artist_name: str, limit: int = 5):
     ]
 
 # ─────────────────────────────────────────────
-# 🎵 Tool 2: Get Artist Top Tracks
+# 🔝 Tool 2: Get Artist Top Tracks
 # ─────────────────────────────────────────────
 @mcp.tool()
 def get_artist_top_tracks(artist_id: str, market: str = "US"):
@@ -272,6 +273,7 @@ def get_artist_own_tracks(artist_id: str):
 @app.after_request
 def add_mcp_header(response):
     response.headers["x-ms-agentic-protocol"] = "mcp-streamable-1.0"
+    response.headers["Content-Type"] = "application/json"
     return response
 
 @app.route("/", methods=["GET"])
@@ -292,15 +294,18 @@ def mcp_handler():
         if not tool:
             return jsonify({"error": f"Unknown command: {command}"}), 400
         result = tool.func(**args)
-        return jsonify({"result": result})
+        # Ensure numeric ID issue is patched for Copilot
+        response = {"jsonrpc": "2.0", "id": "1", "result": result}
+        return jsonify(response)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 # ─────────────────────────────────────────────
-# 🏁 Run
+# 🏁 Run with string-ID patch (for Copilot Studio)
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
+    print(f"🎧 Spotify MCP Server running on port {port}")
     app.run(host="0.0.0.0", port=port)
 else:
     gunicorn_app = app  # Required by Azure
