@@ -23,13 +23,11 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # 🔑 Step 1: Azure login
       - name: Login to Azure
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 🚀 Step 2: Deploy to Azure Function
       - name: Deploy to Azure Function App
         uses: Azure/functions-action@v1
         with:
