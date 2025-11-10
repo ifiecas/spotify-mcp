@@ -17,24 +17,23 @@ if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
     logging.warning("⚠️ Missing Spotify credentials in environment variables.")
 
 # ─────────────────────────────────────────────
-# 🔐 Access token cache
+# 🔐 Token Cache
 # ─────────────────────────────────────────────
 _cached_token = None
 _token_expiry = 0
 
 
 def get_spotify_token():
-    """Fetch a Spotify API token and cache it until expiry."""
+    """Fetch a Spotify API token and cache until expiry."""
     global _cached_token, _token_expiry
     now = time.time()
 
     if _cached_token and now < _token_expiry:
         return _cached_token
 
-    url = "https://accounts.spotify.com/api/token"
     try:
         res = requests.post(
-            url,
+            "https://accounts.spotify.com/api/token",
             data={"grant_type": "client_credentials"},
             auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET),
             timeout=10,
@@ -78,8 +77,12 @@ def search_artist_by_name(artist_name: str, limit: int = 5):
 def get_artist_top_tracks(artist_id: str, market: str = "US"):
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
-    url = f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks"
-    res = requests.get(url, headers=headers, params={"market": market}, timeout=10)
+    res = requests.get(
+        f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks",
+        headers=headers,
+        params={"market": market},
+        timeout=10,
+    )
     res.raise_for_status()
     tracks = res.json().get("tracks", [])
     return [
@@ -100,13 +103,12 @@ def get_artist_top_tracks(artist_id: str, market: str = "US"):
 def get_artist_albums(artist_id: str, include_tracks: bool = False):
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
-    url = f"https://api.spotify.com/v1/artists/{artist_id}/albums"
     params = {"include_groups": "album,single", "market": "US", "limit": 20}
-    res = requests.get(url, headers=headers, params=params, timeout=10)
+    res = requests.get(f"https://api.spotify.com/v1/artists/{artist_id}/albums", headers=headers, params=params, timeout=10)
     res.raise_for_status()
-
     albums_data = res.json().get("items", [])
     albums = []
+
     for a in albums_data:
         album = {
             "id": a["id"],
@@ -116,9 +118,9 @@ def get_artist_albums(artist_id: str, include_tracks: bool = False):
             "url": a["external_urls"]["spotify"],
         }
         if include_tracks:
-            track_res = requests.get(f"https://api.spotify.com/v1/albums/{a['id']}/tracks", headers=headers, timeout=10)
-            track_res.raise_for_status()
-            album["tracks"] = [t["name"] for t in track_res.json().get("items", [])]
+            tr_res = requests.get(f"https://api.spotify.com/v1/albums/{a['id']}/tracks", headers=headers, timeout=10)
+            tr_res.raise_for_status()
+            album["tracks"] = [t["name"] for t in tr_res.json().get("items", [])]
         albums.append(album)
 
     return albums
@@ -132,8 +134,12 @@ def get_audio_features(track_ids: list):
         return {"error": "No track IDs provided."}
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
-    url = "https://api.spotify.com/v1/audio-features"
-    res = requests.get(url, headers=headers, params={"ids": ",".join(track_ids[:100])}, timeout=10)
+    res = requests.get(
+        "https://api.spotify.com/v1/audio-features",
+        headers=headers,
+        params={"ids": ",".join(track_ids[:100])},
+        timeout=10,
+    )
     res.raise_for_status()
     data = res.json().get("audio_features", [])
     return [
@@ -149,10 +155,9 @@ def get_audio_features(track_ids: list):
 
 
 # ─────────────────────────────────────────────
-# 🎼 Tool 5: Get Artist Audio Profile Summary
+# 🎼 Tool 5: Artist Profile Summary
 # ─────────────────────────────────────────────
 def get_artist_profile(artist_id: str):
-    """Aggregate average audio features for all artist tracks."""
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
     albums_res = requests.get(
@@ -163,22 +168,20 @@ def get_artist_profile(artist_id: str):
     )
     albums_res.raise_for_status()
     albums = albums_res.json().get("items", [])
+    track_ids = []
 
-    all_track_ids = []
     for a in albums:
         tr = requests.get(f"https://api.spotify.com/v1/albums/{a['id']}/tracks", headers=headers, timeout=10)
         tr.raise_for_status()
-        for t in tr.json().get("items", []):
-            all_track_ids.append(t["id"])
+        track_ids.extend([t["id"] for t in tr.json().get("items", [])])
 
-    if not all_track_ids:
+    if not track_ids:
         return {"message": "No tracks found for artist."}
 
-    batch_ids = all_track_ids[:100]
     features_res = requests.get(
         "https://api.spotify.com/v1/audio-features",
         headers=headers,
-        params={"ids": ",".join(batch_ids)},
+        params={"ids": ",".join(track_ids[:100])},
         timeout=10,
     )
     features_res.raise_for_status()
@@ -201,32 +204,92 @@ def get_artist_profile(artist_id: str):
 
 
 # ─────────────────────────────────────────────
-# 🧩 Tool 6: MCP Tool Discovery (for Copilot Studio)
+# 🧩 Tool 6: MCP Tool Discovery
 # ─────────────────────────────────────────────
 def get_available_tools():
-    """Return all available tool definitions for Copilot Studio discovery."""
+    """Return full MCP schema for Copilot Studio discovery."""
     return {
         "tools": [
-            {"name": "search_artist_by_name", "description": "Search Spotify artists by name", "args": ["artist_name", "limit"]},
-            {"name": "get_artist_top_tracks", "description": "Fetch top tracks of an artist", "args": ["artist_id", "market"]},
-            {"name": "get_artist_albums", "description": "List artist albums and singles", "args": ["artist_id", "include_tracks"]},
-            {"name": "get_audio_features", "description": "Get audio features for a list of tracks", "args": ["track_ids"]},
-            {"name": "get_artist_profile", "description": "Summarize average audio features for an artist", "args": ["artist_id"]},
+            {
+                "name": "search_artist_by_name",
+                "description": "Search Spotify artists by name.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artist_name": {"type": "string"},
+                        "limit": {"type": "integer", "default": 5},
+                    },
+                    "required": ["artist_name"],
+                },
+            },
+            {
+                "name": "get_artist_top_tracks",
+                "description": "Retrieve top tracks for an artist.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artist_id": {"type": "string"},
+                        "market": {"type": "string", "default": "US"},
+                    },
+                    "required": ["artist_id"],
+                },
+            },
+            {
+                "name": "get_artist_albums",
+                "description": "Fetch artist albums or singles.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artist_id": {"type": "string"},
+                        "include_tracks": {"type": "boolean", "default": False},
+                    },
+                    "required": ["artist_id"],
+                },
+            },
+            {
+                "name": "get_audio_features",
+                "description": "Retrieve detailed audio features for tracks.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "track_ids": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["track_ids"],
+                },
+            },
+            {
+                "name": "get_artist_profile",
+                "description": "Summarize average audio features for an artist.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artist_id": {"type": "string"},
+                    },
+                    "required": ["artist_id"],
+                },
+            },
         ]
     }
 
 
 # ─────────────────────────────────────────────
-# 🧩 Azure Function Entry Point
+# 🩺 Health Check
+# ─────────────────────────────────────────────
+def health_check():
+    return {"message": "🎧 Spotify MCP health OK", "status": 200}
+
+
+# ─────────────────────────────────────────────
+# 🧩 Azure Entry
 # ─────────────────────────────────────────────
 def main(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info("🎧 Spotify MCP Function triggered.")
+    logging.info("🎧 Spotify MCP Triggered")
     try:
         body = req.get_json()
     except ValueError:
         body = {}
 
-    tool = body.get("tool")
+    tool = body.get("tool", "")
     args = body.get("args", {})
 
     try:
@@ -242,6 +305,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             result = get_artist_profile(**args)
         elif tool == "get_available_tools":
             result = get_available_tools()
+        elif tool == "health_check":
+            result = health_check()
         else:
             result = {"message": "Spotify MCP reachable", "status": 200}
 
