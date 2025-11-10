@@ -5,20 +5,11 @@ import logging
 import requests
 from dotenv import load_dotenv
 
-# ───────────────────────────────
-# 🔧 Load environment variables
-# ───────────────────────────────
 load_dotenv()
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 
-# ───────────────────────────────
-# 🔐 Helper: Get Spotify Access Token
-# ───────────────────────────────
 def get_spotify_token():
-    if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-        raise EnvironmentError("Missing Spotify credentials in environment variables")
-
     res = requests.post(
         "https://accounts.spotify.com/api/token",
         data={"grant_type": "client_credentials"},
@@ -27,10 +18,7 @@ def get_spotify_token():
     res.raise_for_status()
     return res.json()["access_token"]
 
-# ───────────────────────────────
-# 🎵 Tool 1: Search Artist by Name
-# ───────────────────────────────
-def search_artist_by_name(artist_name: str, limit: int = 5):
+def search_artist_by_name(artist_name: str, limit=5):
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
     res = requests.get(
@@ -38,23 +26,9 @@ def search_artist_by_name(artist_name: str, limit: int = 5):
         headers=headers,
         params={"q": artist_name, "type": "artist", "limit": limit}
     )
-    res.raise_for_status()
-    data = res.json().get("artists", {}).get("items", [])
-    return [
-        {
-            "name": a["name"],
-            "id": a["id"],
-            "followers": a["followers"]["total"],
-            "genres": a.get("genres", []),
-            "popularity": a["popularity"]
-        }
-        for a in data
-    ]
+    return res.json()
 
-# ───────────────────────────────
-# 🔝 Tool 2: Get Artist Top Tracks
-# ───────────────────────────────
-def get_artist_top_tracks(artist_id: str, market: str = "US"):
+def get_artist_top_tracks(artist_id: str, market="US"):
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
     res = requests.get(
@@ -62,35 +36,46 @@ def get_artist_top_tracks(artist_id: str, market: str = "US"):
         headers=headers,
         params={"market": market}
     )
-    res.raise_for_status()
-    return res.json().get("tracks", [])
+    return res.json()
 
-# ───────────────────────────────
-# 🧩 Azure Function Entry Point
-# ───────────────────────────────
 def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
-        body = req.get_json()
+        # parse JSON safely
+        try:
+            body = req.get_json()
+        except ValueError:
+            return func.HttpResponse(
+                json.dumps({"error": "Invalid JSON body"}),
+                status_code=400,
+                mimetype="application/json"
+            )
+
         tool = body.get("tool")
         args = body.get("args", {})
 
+        logging.info(f"🔹 Request received: tool={tool}, args={args}")
+
         if tool == "search_artist_by_name":
-            result = search_artist_by_name(**args)
+            result = search_artist_by_name(
+                artist_name=args.get("artist_name", "Adele"),
+                limit=int(args.get("limit", 5))
+            )
         elif tool == "get_artist_top_tracks":
-            result = get_artist_top_tracks(**args)
+            result = get_artist_top_tracks(
+                artist_id=args.get("artist_id"),
+                market=args.get("market", "US")
+            )
         else:
-            result = {"message": "🎧 Spotify MCP test — endpoint is alive!"}
+            result = {"message": "🎧 Spotify MCP debug — endpoint is alive!"}
 
         return func.HttpResponse(
-            json.dumps(result),
+            json.dumps(result, indent=2),
             status_code=200,
             mimetype="application/json"
         )
 
     except Exception as e:
-        logging.error(f"❌ Error: {e}", exc_info=True)
-        return func.HttpResponse(
-            json.dumps({"error": str(e)}),
-            status_code=500,
-            mimetype="application/json"
-        )
+        # return detailed debug error
+        err = {"error": str(e), "type": str(type(e).__name__)}
+        logging.error(f"❌ Exception: {err}", exc_info=True)
+        return func.HttpResponse(json.dumps(err), status_code=500, mimetype="application/json")
