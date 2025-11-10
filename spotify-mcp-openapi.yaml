@@ -7,4 +7,36 @@ info:
   version: 1.0.0
 host: spotify-mcp1011-fzepetdfcqhsa8fg.australiaeast-01.azurewebsites.net
 basePath: /
-sche
+schemes:
+  - https
+paths:
+  /mcp:
+    post:
+      summary: Invoke Spotify MCP Tools
+      description: Streamable MCP endpoint compatible with Copilot Studio.
+      operationId: InvokeSpotifyMCP
+      x-ms-agentic-protocol: mcp-streamable-1.0
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - name: tool
+          in: body
+          required: true
+          description: Name of the MCP tool to invoke
+          schema:
+            type: string
+        - name: args
+          in: body
+          required: false
+          description: Arguments for the selected tool
+          schema:
+            type: object
+      responses:
+        '200':
+          description: Success — tool result returned
+        '400':
+          description: Bad request — invalid tool name or arguments
+        '500':
+          description: Internal error
