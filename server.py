@@ -18,12 +18,12 @@ import os
 import time
 import requests
 import logging
-import multiprocessing
 import uvicorn
 from typing import Dict, Any, List
 from dotenv import load_dotenv
+from fastapi import Request
+from starlette.responses import PlainTextResponse, JSONResponse
 from mcp.server.fastmcp import FastMCP
-from starlette.responses import PlainTextResponse
 
 # ─────────────────────────────────────────────
 # ⚙️ Environment Setup
@@ -33,7 +33,7 @@ SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 
 if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-    raise EnvironmentError("Missing Spotify credentials in .env file.")
+    raise EnvironmentError("❌ Missing Spotify credentials. Add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to your .env file or Azure App Settings.")
 
 # ─────────────────────────────────────────────
 # 🔧 Logging
@@ -57,8 +57,10 @@ def get_spotify_token() -> str:
     """Fetch Spotify API token and cache until expiry."""
     global _cached_token, _token_expiry
     now = time.time()
+
     if _cached_token and now < _token_expiry:
         return _cached_token
+
     res = requests.post(
         "https://accounts.spotify.com/api/token",
         data={"grant_type": "client_credentials"},
@@ -175,7 +177,7 @@ def get_audio_features(track_ids: List[str]) -> List[Dict[str, Any]]:
 # 🎼 Tool 5: Artist Profile Summary
 # ─────────────────────────────────────────────
 @mcp.tool()
-def get_artist_profile(artist_id: str) -> Dict[str, Any]:
+def get_artist_profile(artist_id: str) -> Dict[str, Any]]:
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
     albums_res = requests.get(
@@ -218,10 +220,45 @@ def get_artist_profile(artist_id: str) -> Dict[str, Any]:
     }
 
 # ─────────────────────────────────────────────
-# 🩺 Health Endpoint
+# 🌐 MCP Streamable Endpoint (for Copilot)
 # ─────────────────────────────────────────────
-@app.route("/")
-async def root(request) -> PlainTextResponse:
+@app.post("/mcp")
+async def invoke_mcp(request: Request):
+    """Handle MCP requests from Copilot Studio."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    tool = body.get("tool")
+    args = body.get("args", {})
+
+    mapping = {
+        "search_artist_by_name": search_artist_by_name,
+        "get_artist_top_tracks": get_artist_top_tracks,
+        "get_artist_albums": get_artist_albums,
+        "get_audio_features": get_audio_features,
+        "get_artist_profile": get_artist_profile,
+    }
+
+    if tool not in mapping:
+        return JSONResponse(
+            {"error": f"Unknown tool '{tool}'", "available_tools": list(mapping.keys())},
+            status_code=400,
+        )
+
+    try:
+        result = mapping[tool](**args)
+        return JSONResponse(result)
+    except Exception as e:
+        logging.exception("Error in MCP tool call")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+# ─────────────────────────────────────────────
+# 🩺 Health Check
+# ─────────────────────────────────────────────
+@app.get("/")
+async def root():
     return PlainTextResponse("🎧 Spotify MCP Server is alive and streamable via /mcp")
 
 # ─────────────────────────────────────────────
