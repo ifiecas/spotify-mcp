@@ -28,7 +28,6 @@ def get_spotify_token():
     global _cached_token, _token_expiry
     now = time.time()
 
-    # Return cached token if still valid
     if _cached_token and now < _token_expiry:
         return _cached_token
 
@@ -202,6 +201,22 @@ def get_artist_profile(artist_id: str):
 
 
 # ─────────────────────────────────────────────
+# 🧩 Tool 6: MCP Tool Discovery (for Copilot Studio)
+# ─────────────────────────────────────────────
+def get_available_tools():
+    """Return all available tool definitions for Copilot Studio discovery."""
+    return {
+        "tools": [
+            {"name": "search_artist_by_name", "description": "Search Spotify artists by name", "args": ["artist_name", "limit"]},
+            {"name": "get_artist_top_tracks", "description": "Fetch top tracks of an artist", "args": ["artist_id", "market"]},
+            {"name": "get_artist_albums", "description": "List artist albums and singles", "args": ["artist_id", "include_tracks"]},
+            {"name": "get_audio_features", "description": "Get audio features for a list of tracks", "args": ["track_ids"]},
+            {"name": "get_artist_profile", "description": "Summarize average audio features for an artist", "args": ["artist_id"]},
+        ]
+    }
+
+
+# ─────────────────────────────────────────────
 # 🧩 Azure Function Entry Point
 # ─────────────────────────────────────────────
 def main(req: func.HttpRequest) -> func.HttpResponse:
@@ -225,6 +240,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             result = get_audio_features(**args)
         elif tool == "get_artist_profile":
             result = get_artist_profile(**args)
+        elif tool == "get_available_tools":
+            result = get_available_tools()
         else:
             result = {"message": "Spotify MCP reachable", "status": 200}
 
