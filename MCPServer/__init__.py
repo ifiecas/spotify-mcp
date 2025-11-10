@@ -1,42 +1,40 @@
 import azure.functions as func
 import json
-import traceback
+import logging
 import os
 import requests
 from dotenv import load_dotenv
 
+# ─────────────────────────────
+#  Load environment
+# ─────────────────────────────
+load_dotenv()
+
 def main(req: func.HttpRequest) -> func.HttpResponse:
+    logging.info("🎧 Spotify MCP Function triggered.")
     try:
-        # Load env first
-        load_dotenv()
-        SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
-        SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+        # Simple heartbeat endpoint
+        if req.method == "GET":
+            return func.HttpResponse(
+                json.dumps({"message": "🎧 Spotify MCP test — endpoint is alive!"}),
+                mimetype="application/json",
+                status_code=200
+            )
 
-        # Basic check before calling Spotify
-        if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-            raise ValueError("Missing Spotify credentials in environment variables.")
-
-        # Test Spotify connection
-        res = requests.post(
-            "https://accounts.spotify.com/api/token",
-            data={"grant_type": "client_credentials"},
-            auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET)
-        )
-        res.raise_for_status()
-        token = res.json().get("access_token")
+        # Parse body if POST
+        body = req.get_json()
+        logging.info(f"Incoming body: {body}")
 
         return func.HttpResponse(
-            json.dumps({"message": "✅ Spotify MCP debug success!", "token_preview": token[:20]}),
-            status_code=200,
-            mimetype="application/json"
+            json.dumps({"echo": body}),
+            mimetype="application/json",
+            status_code=200
         )
 
     except Exception as e:
-        # Return full traceback to see the problem
-        tb = traceback.format_exc()
-        error_json = {"error": str(e), "traceback": tb}
+        logging.error(f"❌ Function error: {e}", exc_info=True)
         return func.HttpResponse(
-            json.dumps(error_json, indent=2),
-            status_code=500,
-            mimetype="application/json"
+            json.dumps({"error": str(e)}),
+            mimetype="application/json",
+            status_code=500
         )
