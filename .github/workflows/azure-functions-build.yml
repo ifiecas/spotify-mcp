@@ -17,12 +17,12 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies locally into a build folder
+      - name: Install dependencies into build folder
         run: |
           python -m pip install --upgrade pip
           mkdir -p build
           pip install -r requirements.txt -t build
-          cp -r * build/
+          rsync -av --exclude 'build' . build/
 
       - name: Zip deployment package
         run: |
