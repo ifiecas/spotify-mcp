@@ -1,0 +1,60 @@
+openapi: 3.0.1
+info:
+  title: Spotify MCP Server
+  description: >
+    A Model Context Protocol (MCP) server hosted on Azure Functions.  
+    Provides tools to query the Spotify API — search artists, retrieve top tracks, albums, and analyze audio profiles.  
+    Works seamlessly with Copilot Studio custom actions or Power Automate connectors.
+  version: 1.0.0
+servers:
+  - url: https://spotify-mcp1011-fzepetdfcqhsa8fg.australiaeast-01.azurewebsites.net/api
+paths:
+  /MCPServer:
+    post:
+      summary: Invoke Spotify MCP Tool
+      description: >
+        Single entrypoint to trigger any Spotify MCP tool.  
+        The tool name and arguments are passed in the JSON body.
+      operationId: InvokeMCPServer
+      x-ms-agentic-protocol: mcp-streamable-1.0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tool:
+                  type: string
+                  description: The tool name to execute (e.g. `search_artist_by_name`)
+                  enum:
+                    - search_artist_by_name
+                    - get_artist_top_tracks
+                    - get_artist_albums
+                    - get_audio_features
+                    - get_artist_profile
+                    - get_available_tools
+                args:
+                  type: object
+                  description: Arguments specific to the selected tool
+                  example:
+                    artist_name: Adele
+                    limit: 5
+      responses:
+        "200":
+          description: Successful execution of the tool
+          content:
+            application/json:
+              schema:
+                type: object
+                description: JSON response from the selected Spotify MCP tool
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Spotify API error"
