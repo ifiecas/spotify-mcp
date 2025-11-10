@@ -1,3 +1,4 @@
-mcp
+azure-functions
 requests
 python-dotenv
+mcp
