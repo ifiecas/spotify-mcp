@@ -3,10 +3,7 @@ import os
 import logging
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Security, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastmcp import FastMCP
 
 # Load environment variables
 load_dotenv()
@@ -24,18 +21,8 @@ logger = logging.getLogger(__name__)
 # Azure will set PORT, default to 8000 for local
 PORT = int(os.getenv("PORT", "8000"))
 
-# Security scheme
-security = HTTPBearer()
-
-def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)) -> bool:
-    """Verify the Bearer token"""
-    if credentials.credentials != LOCAL_TOKEN:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid authentication token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return True
+# FastMCP server
+mcp = FastMCP("spotify-mcp")
 
 # Helper: get Spotify auth token
 def get_spotify_token() -> str | None:
@@ -53,9 +40,18 @@ def get_spotify_token() -> str | None:
         logger.error(f"Spotify token error: {e}")
         return None
 
-# Core functions
+# MCP Tool 1 - search artist
+@mcp.tool()
 def search_artist_by_name(artist_name: str) -> Any:
-    """Search Spotify for an artist by name."""
+    """
+    Search Spotify for an artist by name.
+    
+    Args:
+        artist_name: The name of the artist to search for
+        
+    Returns:
+        JSON object containing search results with artist information
+    """
     token = get_spotify_token()
     if not token:
         return {"error": "Could not authenticate with Spotify"}
@@ -76,8 +72,18 @@ def search_artist_by_name(artist_name: str) -> Any:
         logger.error(f"Spotify search error: {e}")
         return {"error": str(e)}
 
+# MCP Tool 2 - top tracks
+@mcp.tool()
 def get_artist_top_tracks(artist_id: str) -> Any:
-    """Get an artist's top tracks in AU market."""
+    """
+    Get an artist's top tracks in AU market.
+    
+    Args:
+        artist_id: The Spotify artist ID
+        
+    Returns:
+        JSON object containing the artist's top tracks
+    """
     token = get_spotify_token()
     if not token:
         return {"error": "Spotify authentication failed"}
@@ -94,8 +100,18 @@ def get_artist_top_tracks(artist_id: str) -> Any:
         logger.error(f"Spotify top tracks error: {e}")
         return {"error": str(e)}
 
+# MCP Tool 3 - artist albums
+@mcp.tool()
 def get_artist_albums(artist_id: str) -> Any:
-    """Get an artist's albums."""
+    """
+    Get an artist's albums.
+    
+    Args:
+        artist_id: The Spotify artist ID
+        
+    Returns:
+        JSON object containing the artist's albums
+    """
     token = get_spotify_token()
     if not token:
         return {"error": "Spotify authentication failed"}
@@ -115,84 +131,69 @@ def get_artist_albums(artist_id: str) -> Any:
         logger.error(f"Spotify albums error: {e}")
         return {"error": str(e)}
 
-# Create FastAPI app
-app = FastAPI(title="Spotify MCP REST API")
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "*",  # Allow all origins for now
-        "https://make.powerapps.com",
-        "https://make.powerautomate.com",
-        "https://*.microsoft.com",
-        "https://copilotstudio.microsoft.com"
-    ],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
-
-# Pydantic models for request validation
-class SearchArtistRequest(BaseModel):
-    artist_name: str
-
-class ArtistIdRequest(BaseModel):
-    artist_id: str
-
-# REST endpoints
-@app.post("/search-artist")
-async def search_artist_endpoint(request: SearchArtistRequest, authorized: bool = Depends(verify_token)):
-    """REST endpoint for searching artists"""
-    logger.info(f"Search request for artist: {request.artist_name}")
-    result = search_artist_by_name(request.artist_name)
-    if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
-
-@app.post("/artist-top-tracks")
-async def top_tracks_endpoint(request: ArtistIdRequest, authorized: bool = Depends(verify_token)):
-    """REST endpoint for getting top tracks"""
-    logger.info(f"Top tracks request for artist: {request.artist_id}")
-    result = get_artist_top_tracks(request.artist_id)
-    if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
-
-@app.post("/artist-albums")
-async def albums_endpoint(request: ArtistIdRequest, authorized: bool = Depends(verify_token)):
-    """REST endpoint for getting albums"""
-    logger.info(f"Albums request for artist: {request.artist_id}")
-    result = get_artist_albums(request.artist_id)
-    if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
-
-@app.get("/")
-async def root():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "Spotify MCP Server",
-        "endpoints": ["/search-artist", "/artist-top-tracks", "/artist-albums"]
-    }
-
-@app.get("/health")
-async def health():
-    """Health check for Azure"""
-    return {"status": "ok"}
-
-# Add OPTIONS handlers for CORS preflight
-@app.options("/search-artist")
-@app.options("/artist-top-tracks")
-@app.options("/artist-albums")
-async def options_handler():
-    """Handle CORS preflight requests"""
-    return {"status": "ok"}
-
-# Run the app
+# Run FastMCP with streamable-http transport
 if __name__ == "__main__":
+    from starlette.middleware.cors import CORSMiddleware
+    from fastapi import Request, Response
+    
+    # Get the ASGI app from FastMCP
+    app = mcp.get_asgi_app()
+    
+    # Add CORS middleware for Power Platform
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "*",
+            "https://make.powerapps.com",
+            "https://make.powerautomate.com", 
+            "https://*.microsoft.com",
+            "https://copilotstudio.microsoft.com"
+        ],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+        expose_headers=["*"],
+    )
+    
+    # Add authentication middleware
+    @app.middleware("http")
+    async def auth_middleware(request: Request, call_next):
+        """Validate Bearer token"""
+        # Skip auth for health check
+        if request.url.path == "/":
+            return await call_next(request)
+            
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return Response(
+                content='{"error": "Missing or invalid Authorization header"}',
+                status_code=401,
+                media_type="application/json"
+            )
+        
+        token = auth_header.replace("Bearer ", "")
+        if token != LOCAL_TOKEN:
+            return Response(
+                content='{"error": "Invalid authentication token"}',
+                status_code=401,
+                media_type="application/json"
+            )
+        
+        return await call_next(request)
+    
+    # Add root health check
+    @app.get("/")
+    async def health():
+        return {
+            "status": "healthy",
+            "service": "Spotify MCP Server",
+            "transport": "streamable-http",
+            "tools": ["search_artist_by_name", "get_artist_top_tracks", "get_artist_albums"]
+        }
+    
     import uvicorn
-    logger.info(f"Starting server on 0.0.0.0:{PORT}")
+    logger.info(f"Starting Spotify MCP Server on 0.0.0.0:{PORT}")
+    logger.info("MCP endpoint available at /mcp")
+    logger.info("Tools: search_artist_by_name, get_artist_top_tracks, get_artist_albums")
+    
     uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
