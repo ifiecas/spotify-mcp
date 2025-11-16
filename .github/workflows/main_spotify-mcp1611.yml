@@ -19,11 +19,11 @@ jobs:
       - name: Create deployment folder
         run: |
           mkdir site
-          cp server.py site/
-          cp requirements.txt site/
-          cp README.md site/
-          # Do not copy .env to production unless needed
-          # cp .env site/
+          cp spotify-mcp/server.py site/
+          cp spotify-mcp/requirements.txt site/
+          cp spotify-mcp/README.md site/
+          # Optional:
+          # cp spotify-mcp/.env site/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
