@@ -20,10 +20,8 @@ logger = logging.getLogger(__name__)
 # Azure will set PORT, default to 8000 for local
 PORT = int(os.getenv("PORT", "8000"))
 
-# FastMCP server with streamable HTTP
-mcp = FastMCP(
-    "spotify-mcp",
-)
+# FastMCP server
+mcp = FastMCP("spotify-mcp")
 
 # Helper: get Spotify auth token
 def get_spotify_token() -> str | None:
@@ -116,5 +114,9 @@ def get_artist_albums(artist_id: str) -> Any:
 
 # Run Streamable HTTP server
 if __name__ == "__main__":
-    # This will listen on http://0.0.0.0:8000/mcp in Azure
-    mcp.run(transport="sse", host="0.0.0.0", port=PORT)
+    # Run with streamable-http transport
+    mcp.run(
+        transport="streamable-http",
+        host="0.0.0.0",
+        port=PORT
+    )
