@@ -4,6 +4,9 @@ import logging
 import requests
 from dotenv import load_dotenv
 from fastmcp import FastMCP
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 # Load environment variables
 load_dotenv()
@@ -112,11 +115,73 @@ def get_artist_albums(artist_id: str) -> Any:
         logger.error(f"Spotify albums error: {e}")
         return {"error": str(e)}
 
-# Run Streamable HTTP server
+# Create REST API wrapper using FastAPI
+# This allows Power Platform to call the endpoints directly
+app = FastAPI(title="Spotify MCP REST API")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Pydantic models for request validation
+class SearchArtistRequest(BaseModel):
+    artist_name: str
+
+class ArtistIdRequest(BaseModel):
+    artist_id: str
+
+# REST endpoints
+@app.post("/search-artist")
+async def search_artist_endpoint(request: SearchArtistRequest):
+    """REST endpoint for searching artists"""
+    result = search_artist_by_name(request.artist_name)
+    if isinstance(result, dict) and "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+@app.post("/artist-top-tracks")
+async def top_tracks_endpoint(request: ArtistIdRequest):
+    """REST endpoint for getting top tracks"""
+    result = get_artist_top_tracks(request.artist_id)
+    if isinstance(result, dict) and "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+@app.post("/artist-albums")
+async def albums_endpoint(request: ArtistIdRequest):
+    """REST endpoint for getting albums"""
+    result = get_artist_albums(request.artist_id)
+    if isinstance(result, dict) and "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+@app.get("/")
+async def root():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "service": "Spotify MCP Server",
+        "endpoints": {
+            "mcp": "/mcp",
+            "rest": ["/search-artist", "/artist-top-tracks", "/artist-albums"]
+        }
+    }
+
+# Mount MCP server
+mcp_app = mcp.get_asgi_app()
+
+# Run both FastAPI and MCP together
 if __name__ == "__main__":
-    # Run with streamable-http transport
-    mcp.run(
-        transport="streamable-http",
-        host="0.0.0.0",
-        port=PORT
-    )
+    import uvicorn
+    from fastapi.applications import FastAPI
+    
+    # Mount MCP at /mcp path
+    app.mount("/mcp", mcp_app)
+    
+    # Run the combined app
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
