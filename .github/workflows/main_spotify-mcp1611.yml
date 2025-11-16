@@ -1,4 +1,4 @@
-name: Build and deploy Python app to Azure Web App - spotify-mcp1611
+name: Deploy Spotify MCP to Azure
 
 on:
   push:
@@ -9,99 +9,53 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python version
-        uses: actions/setup-python@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Create and start virtual environment
-        run: |
-          python -m venv venv
-          source venv/bin/activate
-
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          python -m venv antenv
+          source antenv/bin/activate
           pip install -r requirements.txt
 
-      - name: Zip artifact for deployment
-        run: zip release.zip ./* -r -x "venv/*" ".env" ".git/*" ".github/*"
-
-      - name: Upload artifact for deployment jobs
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: python-app
-          path: release.zip
-
+          path: |
+            ./          # Upload ENTIRE repo root
+            !antenv/    # Exclude virtual env
+            !.github/   # Exclude workflow folder
+            !.env       # DO NOT DEPLOY your .env file
   deploy:
     runs-on: ubuntu-latest
     needs: build
+
     permissions:
       id-token: write
       contents: read
 
     steps:
-      - name: Download artifact from build job
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: python-app
 
-      - name: Unzip artifact for deployment
-        run: unzip release.zip
-
-      - name: Login to Azure
+      - name: Azure Login
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_A28654983AC14061A29DB296FC5E24BB }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_4D26C75CA2D549DF8DF1E5010857417A }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_86673BA4D53044718E9AB8C65E88767C }}
-
-      - name: Stop App Service
-        run: |
-          az webapp stop --name spotify-mcp1611 --resource-group ${{ secrets.AZURE_RESOURCE_GROUP || 'DefaultResourceGroup-EAU' }}
-          echo "App stopped. Waiting 10 seconds..."
-          sleep 10
-
-      - name: Set Azure App Settings
-        run: |
-          az webapp config appsettings set \
-            --name spotify-mcp1611 \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP || 'DefaultResourceGroup-EAU' }} \
-            --settings \
-              SPOTIFY_CLIENT_ID="${{ secrets.SPOTIFY_CLIENT_ID }}" \
-              SPOTIFY_CLIENT_SECRET="${{ secrets.SPOTIFY_CLIENT_SECRET }}" \
-              LOCAL_TOKEN="${{ secrets.LOCAL_TOKEN }}" \
-              SCM_DO_BUILD_DURING_DEPLOYMENT=true
-          
-          echo "Waiting 30 seconds for settings to apply..."
-          sleep 30
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID }}
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'spotify-mcp1611'
           slot-name: 'Production'
-          package: .
-      
-      - name: Start App Service
-        run: |
-          echo "Starting the app service..."
-          az webapp start --name spotify-mcp1611 --resource-group ${{ secrets.AZURE_RESOURCE_GROUP || 'DefaultResourceGroup-EAU' }}
-          echo "Waiting for app to fully start..."
-          sleep 15
-          echo "App started successfully!"
-          
-      - name: Verify App is Running
-        run: |
-          STATUS=$(az webapp show --name spotify-mcp1611 --resource-group ${{ secrets.AZURE_RESOURCE_GROUP || 'DefaultResourceGroup-EAU' }} --query state -o tsv)
-          echo "App status: $STATUS"
-          if [ "$STATUS" != "Running" ]; then
-            echo "ERROR: App is not running!"
-            exit 1
-          fi
