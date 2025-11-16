@@ -15,15 +15,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Upload artifact
+      - name: Set up Python version
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Create and start virtual environment
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Zip artifact for deployment
+        run: zip release.zip ./* -r -x "venv/*" ".env" ".git/*" ".github/*"
+
+      - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
         with:
           name: python-app
-          path: |
-            server.py
-            requirements.txt
-            .env
-            README.md
+          path: release.zip
 
   deploy:
     runs-on: ubuntu-latest
@@ -33,10 +47,13 @@ jobs:
       contents: read
 
     steps:
-      - name: Download artifact
+      - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: python-app
+
+      - name: Unzip artifact for deployment
+        run: unzip release.zip
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -44,6 +61,17 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_A28654983AC14061A29DB296FC5E24BB }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_4D26C75CA2D549DF8DF1E5010857417A }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_86673BA4D53044718E9AB8C65E88767C }}
+
+      - name: Set Azure App Settings
+        run: |
+          az webapp config appsettings set \
+            --name spotify-mcp1611 \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP || 'DefaultResourceGroup-EAU' }} \
+            --settings \
+              SPOTIFY_CLIENT_ID="${{ secrets.SPOTIFY_CLIENT_ID }}" \
+              SPOTIFY_CLIENT_SECRET="${{ secrets.SPOTIFY_CLIENT_SECRET }}" \
+              LOCAL_TOKEN="${{ secrets.LOCAL_TOKEN }}" \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=true
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
