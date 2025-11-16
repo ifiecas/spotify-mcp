@@ -13,6 +13,7 @@ load_dotenv()
 
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+API_TOKEN = os.getenv("API_TOKEN")
 LOCAL_TOKEN = os.getenv("LOCAL_TOKEN")
 
 if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
@@ -21,8 +22,7 @@ if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("spotify-mcp")
 
-
-# AUTH MIDDLEWARE (same working approach as your sample)
+# AUTH MIDDLEWARE
 class UserAuthMiddleware(Middleware):
     async def on_message(self, context: MiddlewareContext, call_next):
 
@@ -42,7 +42,6 @@ class UserAuthMiddleware(Middleware):
 
         return await call_next(context)
 
-
 # MCP SERVER
 PORT = int(os.getenv("PORT", "8000"))
 
@@ -54,8 +53,7 @@ mcp = FastMCP(
 
 mcp.add_middleware(UserAuthMiddleware())
 
-
-# SPOTIFY TOKEN
+# Spotify token fetch
 def get_spotify_token():
     url = "https://accounts.spotify.com/api/token"
     data = {"grant_type": "client_credentials"}
@@ -69,8 +67,7 @@ def get_spotify_token():
         logger.error(f"Spotify token error: {e}")
         return None
 
-
-# TOOL: Search artist
+# TOOL: search artist
 @mcp.tool()
 async def search_artist_by_name(artist_name: str) -> Any:
     token = get_spotify_token()
@@ -87,8 +84,7 @@ async def search_artist_by_name(artist_name: str) -> Any:
     except Exception as e:
         return {"error": str(e)}
 
-
-# TOOL: Top tracks
+# TOOL: top tracks
 @mcp.tool()
 async def get_artist_top_tracks(artist_id: str) -> Any:
     token = get_spotify_token()
@@ -105,8 +101,7 @@ async def get_artist_top_tracks(artist_id: str) -> Any:
     except Exception as e:
         return {"error": str(e)}
 
-
-# TOOL: Albums
+# TOOL: albums
 @mcp.tool()
 async def get_artist_albums(artist_id: str) -> Any:
     token = get_spotify_token()
@@ -123,8 +118,7 @@ async def get_artist_albums(artist_id: str) -> Any:
     except Exception as e:
         return {"error": str(e)}
 
-
-# TOOL: Track features
+# TOOL: audio features
 @mcp.tool()
 async def get_audio_features(track_id: str) -> Any:
     token = get_spotify_token()
@@ -141,16 +135,15 @@ async def get_audio_features(track_id: str) -> Any:
     except Exception as e:
         return {"error": str(e)}
 
-
-# TOOL: Artist audio profile
+# TOOL: audio profile
 @mcp.tool()
 async def get_artist_audio_profile(artist_id: str) -> Any:
     token = get_spotify_token()
     if not token:
         return {"error": "Spotify authentication failed"}
 
-    top_url = f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks?market=AU"
     headers = {"Authorization": f"Bearer {token}"}
+    top_url = f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks?market=AU"
 
     try:
         resp = requests.get(top_url, headers=headers)
@@ -160,31 +153,26 @@ async def get_artist_audio_profile(artist_id: str) -> Any:
         if not tracks:
             return {"error": "No tracks found"}
 
-        details = []
-
+        features = []
         for t in tracks:
-            feat_url = f"https://api.spotify.com/v1/audio-features/{t['id']}"
-            f = requests.get(feat_url, headers=headers)
-            if f.status_code == 200:
-                details.append(f.json())
+            f_url = f"https://api.spotify.com/v1/audio-features/{t['id']}"
+            fr = requests.get(f_url, headers=headers)
+            if fr.status_code == 200:
+                features.append(fr.json())
 
-        if not details:
+        if not features:
             return {"error": "No audio features"}
 
         avg = {}
-        keys = ["danceability", "energy", "valence", "tempo"]
-
-        for k in keys:
-            vals = [d[k] for d in details if d.get(k) is not None]
+        for key in ["danceability", "energy", "valence", "tempo"]:
+            vals = [f[key] for f in features if f.get(key) is not None]
             if vals:
-                avg[k] = sum(vals) / len(vals)
+                avg[key] = sum(vals) / len(vals)
 
         return avg
 
     except Exception as e:
         return {"error": str(e)}
 
-
-# ENTRYPOINT
 if __name__ == "__main__":
     mcp.run(transport="streamable-http")
