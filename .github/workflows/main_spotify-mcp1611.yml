@@ -16,24 +16,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies (local check only)
+      - name: Create deployment folder
         run: |
-          pip install -r requirements.txt
+          mkdir site
+          cp server.py site/
+          cp requirements.txt site/
+          cp README.md site/
+          # Do not copy .env to production unless needed
+          # cp .env site/
 
-      - name: Upload artifact for deployment
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: python-app
-          path: |
-            server.py
-            requirements.txt
-            .env
-            README.md
+          path: site
 
   deploy:
     runs-on: ubuntu-latest
@@ -59,5 +55,4 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'spotify-mcp1611'
-          slot-name: 'Production'
           package: .
