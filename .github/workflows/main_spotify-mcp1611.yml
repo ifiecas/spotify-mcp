@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
+
   build:
     runs-on: ubuntu-latest
     permissions:
@@ -33,8 +34,7 @@ jobs:
             requirements.txt
             .env
             README.md
-yaml
-Copy code
+
   deploy:
     runs-on: ubuntu-latest
     needs: build
