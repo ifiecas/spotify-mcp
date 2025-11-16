@@ -3,7 +3,7 @@ import os
 import logging
 import requests
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 # Load environment variables
 load_dotenv()
@@ -20,10 +20,9 @@ logger = logging.getLogger(__name__)
 # Azure will set PORT, default to 8000 for local
 PORT = int(os.getenv("PORT", "8000"))
 
-# Minimal FastMCP server, no auth yet
+# FastMCP server with streamable HTTP
 mcp = FastMCP(
     "spotify-mcp",
-    stateless_http=True
 )
 
 # Helper: get Spotify auth token
@@ -31,7 +30,6 @@ def get_spotify_token() -> str | None:
     url = "https://accounts.spotify.com/api/token"
     data = {"grant_type": "client_credentials"}
     auth = (SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET)
-
     try:
         resp = requests.post(url, data=data, auth=auth, timeout=10)
         resp.raise_for_status()
@@ -45,14 +43,14 @@ def get_spotify_token() -> str | None:
 
 # Tool 1 - search artist
 @mcp.tool()
-async def search_artist_by_name(artist_name: str) -> Any:
+def search_artist_by_name(artist_name: str) -> Any:
     """
     Search Spotify for an artist by name.
     """
     token = get_spotify_token()
     if not token:
         return {"error": "Could not authenticate with Spotify"}
-
+    
     url = "https://api.spotify.com/v1/search"
     params = {
         "q": artist_name,
@@ -60,7 +58,7 @@ async def search_artist_by_name(artist_name: str) -> Any:
         "limit": 5,
     }
     headers = {"Authorization": f"Bearer {token}"}
-
+    
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=10)
         resp.raise_for_status()
@@ -71,18 +69,18 @@ async def search_artist_by_name(artist_name: str) -> Any:
 
 # Tool 2 - top tracks
 @mcp.tool()
-async def get_artist_top_tracks(artist_id: str) -> Any:
+def get_artist_top_tracks(artist_id: str) -> Any:
     """
     Get an artist's top tracks in AU market.
     """
     token = get_spotify_token()
     if not token:
         return {"error": "Spotify authentication failed"}
-
+    
     url = f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks"
     params = {"market": "AU"}
     headers = {"Authorization": f"Bearer {token}"}
-
+    
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=10)
         resp.raise_for_status()
@@ -93,21 +91,21 @@ async def get_artist_top_tracks(artist_id: str) -> Any:
 
 # Tool 3 - artist albums
 @mcp.tool()
-async def get_artist_albums(artist_id: str) -> Any:
+def get_artist_albums(artist_id: str) -> Any:
     """
     Get an artist's albums.
     """
     token = get_spotify_token()
     if not token:
         return {"error": "Spotify authentication failed"}
-
+    
     url = f"https://api.spotify.com/v1/artists/{artist_id}/albums"
     params = {
         "market": "AU",
         "limit": 10,
     }
     headers = {"Authorization": f"Bearer {token}"}
-
+    
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=10)
         resp.raise_for_status()
@@ -116,11 +114,7 @@ async def get_artist_albums(artist_id: str) -> Any:
         logger.error(f"Spotify albums error: {e}")
         return {"error": str(e)}
 
-# Run Streamable HTTP server on /mcp
+# Run Streamable HTTP server
 if __name__ == "__main__":
     # This will listen on http://0.0.0.0:8000/mcp in Azure
-    mcp.run(
-        transport="streamable-http",
-        host="0.0.0.0",
-        port=PORT,
-    )
+    mcp.run(transport="sse", host="0.0.0.0", port=PORT)
