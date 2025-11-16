@@ -5,10 +5,11 @@ import requests
 from dotenv import load_dotenv
 
 # Official MCP library (this provides FastMCP internally)
-from mcp.server import FastMCP
-from mcp.server.middleware import Middleware, MiddlewareContext
-from mcp.server.dependencies import get_http_headers
-from mcp.errors import ToolError
+from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Middleware, MiddlewareContext
+from mcp.server.fastmcp import get_http_headers
+from mcp.server.fastmcp import ToolError
+
 
 # Load environment variables
 load_dotenv()
