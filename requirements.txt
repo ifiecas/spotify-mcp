@@ -1,3 +1,4 @@
-mcp>=1.2.0
-python-dotenv
+fastmcp==0.4.0
 requests
+python-dotenv
+httpx
