@@ -1,3 +1,4 @@
-mcp==1.9.1
-python-dotenv
+fastmcp
 requests
+python-dotenv
+uvicorn[standard]
