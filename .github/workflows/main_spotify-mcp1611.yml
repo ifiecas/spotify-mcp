@@ -7,7 +7,6 @@ on:
   workflow_dispatch:
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
     permissions:
@@ -16,20 +15,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create deployment folder
-        run: |
-          mkdir site
-          cp spotify-mcp/server.py site/
-          cp spotify-mcp/requirements.txt site/
-          cp spotify-mcp/README.md site/
-          # Optional:
-          # cp spotify-mcp/.env site/
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: python-app
-          path: site
+          path: |
+            server.py
+            requirements.txt
+            .env
+            README.md
 
   deploy:
     runs-on: ubuntu-latest
@@ -44,7 +38,7 @@ jobs:
         with:
           name: python-app
 
-      - name: Azure Login
+      - name: Login to Azure
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_A28654983AC14061A29DB296FC5E24BB }}
@@ -55,4 +49,5 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'spotify-mcp1611'
+          slot-name: 'Production'
           package: .
