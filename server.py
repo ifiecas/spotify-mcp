@@ -3,8 +3,8 @@ import os
 import logging
 import requests
 from dotenv import load_dotenv
-from fastmcp import FastMCP
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Security, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -13,6 +13,7 @@ load_dotenv()
 
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+LOCAL_TOKEN = os.getenv("LOCAL_TOKEN", "ivymcp")
 
 if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
     raise EnvironmentError("Missing Spotify credentials in environment")
@@ -22,9 +23,6 @@ logger = logging.getLogger(__name__)
 
 # Azure will set PORT, default to 8000 for local
 PORT = int(os.getenv("PORT", "8000"))
-
-# FastMCP server
-mcp = FastMCP("spotify-mcp")
 
 # Helper: get Spotify auth token
 def get_spotify_token() -> str | None:
@@ -42,12 +40,9 @@ def get_spotify_token() -> str | None:
         logger.error(f"Spotify token error: {e}")
         return None
 
-# Tool 1 - search artist
-@mcp.tool()
+# Core functions
 def search_artist_by_name(artist_name: str) -> Any:
-    """
-    Search Spotify for an artist by name.
-    """
+    """Search Spotify for an artist by name."""
     token = get_spotify_token()
     if not token:
         return {"error": "Could not authenticate with Spotify"}
@@ -68,12 +63,8 @@ def search_artist_by_name(artist_name: str) -> Any:
         logger.error(f"Spotify search error: {e}")
         return {"error": str(e)}
 
-# Tool 2 - top tracks
-@mcp.tool()
 def get_artist_top_tracks(artist_id: str) -> Any:
-    """
-    Get an artist's top tracks in AU market.
-    """
+    """Get an artist's top tracks in AU market."""
     token = get_spotify_token()
     if not token:
         return {"error": "Spotify authentication failed"}
@@ -90,12 +81,8 @@ def get_artist_top_tracks(artist_id: str) -> Any:
         logger.error(f"Spotify top tracks error: {e}")
         return {"error": str(e)}
 
-# Tool 3 - artist albums
-@mcp.tool()
 def get_artist_albums(artist_id: str) -> Any:
-    """
-    Get an artist's albums.
-    """
+    """Get an artist's albums."""
     token = get_spotify_token()
     if not token:
         return {"error": "Spotify authentication failed"}
@@ -115,8 +102,7 @@ def get_artist_albums(artist_id: str) -> Any:
         logger.error(f"Spotify albums error: {e}")
         return {"error": str(e)}
 
-# Create REST API wrapper using FastAPI
-# This allows Power Platform to call the endpoints directly
+# Create FastAPI app
 app = FastAPI(title="Spotify MCP REST API")
 
 # Add CORS middleware
@@ -139,6 +125,7 @@ class ArtistIdRequest(BaseModel):
 @app.post("/search-artist")
 async def search_artist_endpoint(request: SearchArtistRequest):
     """REST endpoint for searching artists"""
+    logger.info(f"Search request for artist: {request.artist_name}")
     result = search_artist_by_name(request.artist_name)
     if isinstance(result, dict) and "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -147,6 +134,7 @@ async def search_artist_endpoint(request: SearchArtistRequest):
 @app.post("/artist-top-tracks")
 async def top_tracks_endpoint(request: ArtistIdRequest):
     """REST endpoint for getting top tracks"""
+    logger.info(f"Top tracks request for artist: {request.artist_id}")
     result = get_artist_top_tracks(request.artist_id)
     if isinstance(result, dict) and "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -155,6 +143,7 @@ async def top_tracks_endpoint(request: ArtistIdRequest):
 @app.post("/artist-albums")
 async def albums_endpoint(request: ArtistIdRequest):
     """REST endpoint for getting albums"""
+    logger.info(f"Albums request for artist: {request.artist_id}")
     result = get_artist_albums(request.artist_id)
     if isinstance(result, dict) and "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -166,22 +155,16 @@ async def root():
     return {
         "status": "healthy",
         "service": "Spotify MCP Server",
-        "endpoints": {
-            "mcp": "/mcp",
-            "rest": ["/search-artist", "/artist-top-tracks", "/artist-albums"]
-        }
+        "endpoints": ["/search-artist", "/artist-top-tracks", "/artist-albums"]
     }
 
-# Mount MCP server
-mcp_app = mcp.get_asgi_app()
+@app.get("/health")
+async def health():
+    """Health check for Azure"""
+    return {"status": "ok"}
 
-# Run both FastAPI and MCP together
+# Run the app
 if __name__ == "__main__":
     import uvicorn
-    from fastapi.applications import FastAPI
-    
-    # Mount MCP at /mcp path
-    app.mount("/mcp", mcp_app)
-    
-    # Run the combined app
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    logger.info(f"Starting server on 0.0.0.0:{PORT}")
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
