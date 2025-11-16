@@ -24,6 +24,19 @@ logger = logging.getLogger(__name__)
 # Azure will set PORT, default to 8000 for local
 PORT = int(os.getenv("PORT", "8000"))
 
+# Security scheme
+security = HTTPBearer()
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)) -> bool:
+    """Verify the Bearer token"""
+    if credentials.credentials != LOCAL_TOKEN:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return True
+
 # Helper: get Spotify auth token
 def get_spotify_token() -> str | None:
     url = "https://accounts.spotify.com/api/token"
@@ -108,10 +121,17 @@ app = FastAPI(title="Spotify MCP REST API")
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "*",  # Allow all origins for now
+        "https://make.powerapps.com",
+        "https://make.powerautomate.com",
+        "https://*.microsoft.com",
+        "https://copilotstudio.microsoft.com"
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Pydantic models for request validation
@@ -123,7 +143,7 @@ class ArtistIdRequest(BaseModel):
 
 # REST endpoints
 @app.post("/search-artist")
-async def search_artist_endpoint(request: SearchArtistRequest):
+async def search_artist_endpoint(request: SearchArtistRequest, authorized: bool = Depends(verify_token)):
     """REST endpoint for searching artists"""
     logger.info(f"Search request for artist: {request.artist_name}")
     result = search_artist_by_name(request.artist_name)
@@ -132,7 +152,7 @@ async def search_artist_endpoint(request: SearchArtistRequest):
     return result
 
 @app.post("/artist-top-tracks")
-async def top_tracks_endpoint(request: ArtistIdRequest):
+async def top_tracks_endpoint(request: ArtistIdRequest, authorized: bool = Depends(verify_token)):
     """REST endpoint for getting top tracks"""
     logger.info(f"Top tracks request for artist: {request.artist_id}")
     result = get_artist_top_tracks(request.artist_id)
@@ -141,7 +161,7 @@ async def top_tracks_endpoint(request: ArtistIdRequest):
     return result
 
 @app.post("/artist-albums")
-async def albums_endpoint(request: ArtistIdRequest):
+async def albums_endpoint(request: ArtistIdRequest, authorized: bool = Depends(verify_token)):
     """REST endpoint for getting albums"""
     logger.info(f"Albums request for artist: {request.artist_id}")
     result = get_artist_albums(request.artist_id)
@@ -161,6 +181,14 @@ async def root():
 @app.get("/health")
 async def health():
     """Health check for Azure"""
+    return {"status": "ok"}
+
+# Add OPTIONS handlers for CORS preflight
+@app.options("/search-artist")
+@app.options("/artist-top-tracks")
+@app.options("/artist-albums")
+async def options_handler():
+    """Handle CORS preflight requests"""
     return {"status": "ok"}
 
 # Run the app
