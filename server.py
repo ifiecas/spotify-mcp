@@ -2,12 +2,13 @@ from typing import Any
 import os
 import logging
 import requests
-from fastmcp.server import FastMCP
-from fastmcp.server.dependencies import get_http_headers
-from fastmcp.server.middleware import Middleware, MiddlewareContext
-from fastmcp.errors import ToolError
 from dotenv import load_dotenv
+from fastmcp.server import FastMCP
+from fastmcp.server.middleware import Middleware, MiddlewareContext
+from fastmcp.server.dependencies import get_http_headers
+from fastmcp.errors import ToolError
 
+# Load environment variables
 load_dotenv()
 
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
@@ -25,22 +26,22 @@ class UserAuthMiddleware(Middleware):
     async def on_message(self, context: MiddlewareContext, call_next):
 
         headers = get_http_headers()
-        mcp_api_key = headers.get("api-key")
+        api_key = headers.get("api-key")
 
-        if not mcp_api_key:
+        if not api_key:
             raise ToolError("Access denied: missing api key")
 
-        if not mcp_api_key.startswith("Bearer "):
+        if not api_key.startswith("Bearer "):
             raise ToolError("Access denied: invalid token format")
 
-        token = mcp_api_key.replace("Bearer", "").strip()
+        token = api_key.replace("Bearer", "").strip()
 
         if token != LOCAL_TOKEN:
             raise ToolError("Access denied: invalid token")
 
         return await call_next(context)
 
-# Azure automatic port detection
+# Initialize FastMCP for Web App (not Functions)
 PORT = int(os.getenv("PORT", "8000"))
 
 mcp = FastMCP(
@@ -51,16 +52,16 @@ mcp = FastMCP(
 
 mcp.add_middleware(UserAuthMiddleware())
 
-# Helper: get Spotify auth token
+# Spotify token helper
 def get_spotify_token() -> str:
     url = "https://accounts.spotify.com/api/token"
     data = {"grant_type": "client_credentials"}
     auth = (SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET)
 
     try:
-        response = requests.post(url, data=data, auth=auth)
-        response.raise_for_status()
-        return response.json().get("access_token")
+        resp = requests.post(url, data=data, auth=auth)
+        resp.raise_for_status()
+        return resp.json().get("access_token")
     except Exception as e:
         logger.error(f"Spotify token error: {e}")
         return None
@@ -72,13 +73,16 @@ async def search_artist_by_name(artist_name: str) -> Any:
     if not token:
         return {"error": "Could not authenticate with Spotify"}
 
-    url = f"https://api.spotify.com/v1/search?q={artist_name}&type=artist&limit=5"
+    url = (
+        f"https://api.spotify.com/v1/search"
+        f"?q={artist_name}&type=artist&limit=5"
+    )
     headers = {"Authorization": f"Bearer {token}"}
 
     try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json()
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        return resp.json()
     except Exception as e:
         return {"error": str(e)}
 
@@ -93,9 +97,9 @@ async def get_artist_top_tracks(artist_id: str) -> Any:
     headers = {"Authorization": f"Bearer {token}"}
 
     try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json()
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        return resp.json()
     except Exception as e:
         return {"error": str(e)}
 
@@ -110,13 +114,13 @@ async def get_artist_albums(artist_id: str) -> Any:
     headers = {"Authorization": f"Bearer {token}"}
 
     try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json()
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        return resp.json()
     except Exception as e:
         return {"error": str(e)}
 
-# Tool 4: Audio features (for track)
+# Tool 4: Get audio features for a track
 @mcp.tool()
 async def get_audio_features(track_id: str) -> Any:
     token = get_spotify_token()
@@ -127,9 +131,9 @@ async def get_audio_features(track_id: str) -> Any:
     headers = {"Authorization": f"Bearer {token}"}
 
     try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json()
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        return resp.json()
     except Exception as e:
         return {"error": str(e)}
 
@@ -140,8 +144,10 @@ async def get_artist_audio_profile(artist_id: str) -> Any:
     if not token:
         return {"error": "Spotify authentication failed"}
 
-    top_tracks_url = f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks?market=AU"
     headers = {"Authorization": f"Bearer {token}"}
+    top_tracks_url = (
+        f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks?market=AU"
+    )
 
     try:
         top_tracks_resp = requests.get(top_tracks_url, headers=headers)
@@ -151,28 +157,30 @@ async def get_artist_audio_profile(artist_id: str) -> Any:
         if not tracks:
             return {"error": "No tracks found"}
 
-        features_list = []
+        features = []
         for t in tracks:
             track_id = t["id"]
             feat_url = f"https://api.spotify.com/v1/audio-features/{track_id}"
             feat_resp = requests.get(feat_url, headers=headers)
             if feat_resp.status_code == 200:
-                features_list.append(feat_resp.json())
+                features.append(feat_resp.json())
 
-        if not features_list:
+        if not features:
             return {"error": "Could not get audio features"}
 
-        avg = {}
+        averages = {}
         keys = ["danceability", "energy", "valence", "tempo"]
-        for k in keys:
-            vals = [f[k] for f in features_list if f.get(k) is not None]
-            if vals:
-                avg[k] = sum(vals) / len(vals)
 
-        return avg
+        for k in keys:
+            vals = [f[k] for f in features if f.get(k) is not None]
+            if vals:
+                averages[k] = sum(vals) / len(vals)
+
+        return averages
 
     except Exception as e:
         return {"error": str(e)}
 
+# Run server (Web App)
 if __name__ == "__main__":
     mcp.run(transport="streamable-http")
