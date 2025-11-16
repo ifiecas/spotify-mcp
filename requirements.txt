@@ -1,3 +1,4 @@
-fastmcp==0.4.0
-requests
+fastmcp==0.5.3
 python-dotenv
+requests
+asyncio
