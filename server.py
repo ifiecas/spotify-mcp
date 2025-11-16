@@ -4,58 +4,47 @@ import logging
 import requests
 from dotenv import load_dotenv
 
-# Official MCP library (this provides FastMCP internally)
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp import Middleware, MiddlewareContext
-from mcp.server.fastmcp import get_http_headers
-from mcp.server.fastmcp import ToolError
+from mcp.server import FastMCP
+from mcp.server.models import ToolError
+from mcp.server.hooks import register_request_hook
 
-
-# Load environment variables
 load_dotenv()
 
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 LOCAL_TOKEN = os.getenv("LOCAL_TOKEN")
 
-if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-    raise EnvironmentError("Missing Spotify Client ID/Secret")
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("spotify-mcp")
 
-# Authentication Middleware for Copilot Studio
-class UserAuthMiddleware(Middleware):
-    async def on_message(self, context: MiddlewareContext, call_next):
-        headers = get_http_headers()
-        api_key = headers.get("api-key")
+if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
+    raise EnvironmentError("Missing Spotify credentials")
 
-        if not api_key:
-            raise ToolError("Access denied: missing api key")
-
-        if not api_key.startswith("Bearer "):
-            raise ToolError("Access denied: invalid token format")
-
-        token = api_key.replace("Bearer", "").strip()
-
-        if token != LOCAL_TOKEN:
-            raise ToolError("Access denied: invalid token")
-
-        return await call_next(context)
-
-# Detect Azure port
 PORT = int(os.getenv("PORT", "8000"))
 
-# Initialize MCP Server
 mcp = FastMCP(
     "spotify-mcp",
     host="0.0.0.0",
     port=PORT
 )
 
-mcp.add_middleware(UserAuthMiddleware())
+# Authentication hook
+@register_request_hook
+def check_auth(request, headers):
+    api_key = headers.get("api-key")
 
-# Helper: Get Spotify API access token
+    if not api_key:
+        raise ToolError(message="Access denied: missing api key")
+
+    if not api_key.startswith("Bearer "):
+        raise ToolError(message="Access denied: invalid token format")
+
+    token = api_key.replace("Bearer", "").strip()
+
+    if token != LOCAL_TOKEN:
+        raise ToolError(message="Access denied: invalid token")
+
+# Get Spotify token
 def get_spotify_token() -> str:
     url = "https://accounts.spotify.com/api/token"
     data = {"grant_type": "client_credentials"}
@@ -69,12 +58,12 @@ def get_spotify_token() -> str:
         logger.error(f"Spotify token error: {e}")
         return None
 
-# Tool 1: Search artist by name
+# Tool 1 search artists
 @mcp.tool()
 async def search_artist_by_name(artist_name: str) -> Any:
     token = get_spotify_token()
     if not token:
-        return {"error": "Failed Spotify authentication"}
+        return {"error": "Spotify authentication failed"}
 
     url = f"https://api.spotify.com/v1/search?q={artist_name}&type=artist&limit=5"
     headers = {"Authorization": f"Bearer {token}"}
@@ -86,12 +75,12 @@ async def search_artist_by_name(artist_name: str) -> Any:
     except Exception as e:
         return {"error": str(e)}
 
-# Tool 2: Artist top tracks
+# Tool 2 top tracks
 @mcp.tool()
 async def get_artist_top_tracks(artist_id: str) -> Any:
     token = get_spotify_token()
     if not token:
-        return {"error": "Failed Spotify authentication"}
+        return {"error": "Spotify authentication failed"}
 
     url = f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks?market=AU"
     headers = {"Authorization": f"Bearer {token}"}
@@ -103,12 +92,12 @@ async def get_artist_top_tracks(artist_id: str) -> Any:
     except Exception as e:
         return {"error": str(e)}
 
-# Tool 3: Artist albums
+# Tool 3 albums
 @mcp.tool()
 async def get_artist_albums(artist_id: str) -> Any:
     token = get_spotify_token()
     if not token:
-        return {"error": "Failed Spotify authentication"}
+        return {"error": "Spotify authentication failed"}
 
     url = f"https://api.spotify.com/v1/artists/{artist_id}/albums?market=AU&limit=10"
     headers = {"Authorization": f"Bearer {token}"}
@@ -120,12 +109,12 @@ async def get_artist_albums(artist_id: str) -> Any:
     except Exception as e:
         return {"error": str(e)}
 
-# Tool 4: Audio features for a track
+# Tool 4 track audio features
 @mcp.tool()
 async def get_audio_features(track_id: str) -> Any:
     token = get_spotify_token()
     if not token:
-        return {"error": "Failed Spotify authentication"}
+        return {"error": "Spotify authentication failed"}
 
     url = f"https://api.spotify.com/v1/audio-features/{track_id}"
     headers = {"Authorization": f"Bearer {token}"}
@@ -137,20 +126,20 @@ async def get_audio_features(track_id: str) -> Any:
     except Exception as e:
         return {"error": str(e)}
 
-# Tool 5: Artist audio profile (averaged metrics)
+# Tool 5 artist audio profile
 @mcp.tool()
 async def get_artist_audio_profile(artist_id: str) -> Any:
     token = get_spotify_token()
     if not token:
-        return {"error": "Failed Spotify authentication"}
+        return {"error": "Spotify authentication failed"}
 
     headers = {"Authorization": f"Bearer {token}"}
     top_tracks_url = f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks?market=AU"
 
     try:
-        top_tracks_resp = requests.get(top_tracks_url, headers=headers)
-        top_tracks_resp.raise_for_status()
-        tracks = top_tracks_resp.json().get("tracks", [])
+        resp = requests.get(top_tracks_url, headers=headers)
+        resp.raise_for_status()
+        tracks = resp.json().get("tracks", [])
 
         if not tracks:
             return {"error": "No tracks found"}
@@ -158,15 +147,16 @@ async def get_artist_audio_profile(artist_id: str) -> Any:
         features = []
         for t in tracks:
             feat_url = f"https://api.spotify.com/v1/audio-features/{t['id']}"
-            feat_resp = requests.get(feat_url, headers=headers)
-            if feat_resp.status_code == 200:
-                features.append(feat_resp.json())
+            fr = requests.get(feat_url, headers=headers)
+            if fr.status_code == 200:
+                features.append(fr.json())
 
         if not features:
-            return {"error": "No audio features available"}
+            return {"error": "No audio features"}
 
         averages = {}
         keys = ["danceability", "energy", "valence", "tempo"]
+
         for k in keys:
             vals = [f[k] for f in features if f.get(k) is not None]
             if vals:
@@ -177,6 +167,5 @@ async def get_artist_audio_profile(artist_id: str) -> Any:
     except Exception as e:
         return {"error": str(e)}
 
-# Run MCP Server
 if __name__ == "__main__":
     mcp.run(transport="streamable-http")
