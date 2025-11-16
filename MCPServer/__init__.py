@@ -1,248 +1,89 @@
-"""
-Spotify MCP Server 🎧
-=====================
-Author: Ivy Fiecas-Borjal
-
-Description:
-A Model Context Protocol (MCP) server that connects to the Spotify Web API.
-It exposes MCP tools for Copilot Studio or ChatGPT MCP Inspector.
-
-Tools:
-  🎵 search_artist_by_name
-  🔝 get_artist_top_tracks
-  💿 get_artist_albums
-  🎚️ get_audio_features
-  🎼 get_artist_profile
-"""
-
-import os
-import time
-import requests
+from typing import Any
 import logging
-import multiprocessing
-import uvicorn
-from dotenv import load_dotenv
-from typing import Dict, Any, List
-from mcp.server.fastmcp import FastMCP
-from starlette.responses import PlainTextResponse
+import requests
+from fastmcp.server import FastMCP
+from fastmcp.server.dependencies import get_http_headers
+from fastmcp.server.middleware import Middleware, MiddlewareContext
+from fastmcp.errors import ToolError
 
-# ─────────────────────────────────────────────
-# ⚙️ Environment Setup
-# ─────────────────────────────────────────────
-load_dotenv()
-SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
-SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+# Import local config
+from config import API_TOKEN        # OutScrapper token
+from config import LOCAL_TOKEN      # Token from Copilot Studio
 
-if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-    raise EnvironmentError("Missing Spotify credentials in .env file.")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────
-# 🧠 MCP Initialization
-# ─────────────────────────────────────────────
-mcp = FastMCP("🎧 Spotify MCP", stateless_http=True)
-app = mcp.streamable_http_app()
-app.debug = False
+# Middleware for Copilot Studio authentication
+class UserAuthMiddleware(Middleware):
+    async def on_message(self, context: MiddlewareContext, call_next):
 
-# ─────────────────────────────────────────────
-# 🔐 Access Token Cache
-# ─────────────────────────────────────────────
-_cached_token = None
-_token_expiry = 0
+        headers = get_http_headers()
+        mcp_api_key = headers.get("api-key")
 
+        if not mcp_api_key:
+            raise ToolError("Access denied: missing api key")
 
-def get_spotify_token() -> str:
-    """Fetch Spotify API token and cache until expiry."""
-    global _cached_token, _token_expiry
-    now = time.time()
+        if not mcp_api_key.startswith("Bearer "):
+            raise ToolError("Access denied: invalid token format")
 
-    if _cached_token and now < _token_expiry:
-        return _cached_token
+        token = mcp_api_key.replace("Bearer", "").strip()
 
-    res = requests.post(
-        "https://accounts.spotify.com/api/token",
-        data={"grant_type": "client_credentials"},
-        auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET),
-        timeout=10,
+        if token != LOCAL_TOKEN:
+            raise ToolError("Access denied: invalid token")
+
+        return await call_next(context)
+
+# Initialize FastMCP server
+# Note: host and port must match your deployment
+mcp = FastMCP(
+    "hotels-mcp",
+    host="0.0.0.0",      # For Azure or local VM
+    port=8000
+)
+
+mcp.add_middleware(UserAuthMiddleware())
+
+# Resource example
+@mcp.resource("file://app.log")
+def get_log_file() -> str:
+    """Returns log file content"""
+    try:
+        with open("app.log", "r") as f:
+            return f.read()
+    except FileNotFoundError:
+        return "No logs found"
+
+# Book a hotel
+@mcp.tool()
+async def book_hotel(hotel_name: str) -> str:
+    hotel_name = hotel_name.strip()
+    return f"Hotel {hotel_name} has been booked successfully"
+
+# Get reviews using OutScrapper
+@mcp.tool()
+async def get_hotel_reviews(hotel_name: str) -> Any:
+    hotel_name = hotel_name.replace("\n", "").replace("\r", "")
+
+    url = (
+        "https://api.app.outscraper.com/maps/reviews-v3"
+        f"?query={hotel_name}&async=false&reviewsLimit=10"
     )
-    res.raise_for_status()
-    data = res.json()
-    _cached_token = data["access_token"]
-    _token_expiry = now + data.get("expires_in", 3600) - 30
-    return _cached_token
 
-
-# ─────────────────────────────────────────────
-# 🎵 Tool 1: Search Artist by Name
-# ─────────────────────────────────────────────
-@mcp.tool()
-def search_artist_by_name(artist_name: str, limit: int = 5) -> List[Dict[str, Any]]:
-    """Search Spotify artists by name."""
-    token = get_spotify_token()
-    headers = {"Authorization": f"Bearer {token}"}
-    params = {"q": artist_name, "type": "artist", "limit": limit}
-    res = requests.get("https://api.spotify.com/v1/search", headers=headers, params=params, timeout=10)
-    res.raise_for_status()
-    data = res.json().get("artists", {}).get("items", [])
-    return [
-        {
-            "id": a["id"],
-            "name": a["name"],
-            "followers": a["followers"]["total"],
-            "genres": a.get("genres", []),
-            "popularity": a["popularity"],
-            "url": a["external_urls"]["spotify"],
-        }
-        for a in data
-    ]
-
-
-# ─────────────────────────────────────────────
-# 🔝 Tool 2: Get Artist Top Tracks
-# ─────────────────────────────────────────────
-@mcp.tool()
-def get_artist_top_tracks(artist_id: str, market: str = "US") -> List[Dict[str, Any]]:
-    """Get an artist’s top tracks."""
-    token = get_spotify_token()
-    headers = {"Authorization": f"Bearer {token}"}
-    url = f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks"
-    res = requests.get(url, headers=headers, params={"market": market}, timeout=10)
-    res.raise_for_status()
-    tracks = res.json().get("tracks", [])
-    return [
-        {
-            "id": t["id"],
-            "name": t["name"],
-            "album": t["album"]["name"],
-            "popularity": t["popularity"],
-            "url": t["external_urls"]["spotify"],
-        }
-        for t in tracks
-    ]
-
-
-# ─────────────────────────────────────────────
-# 💿 Tool 3: Get Artist Albums
-# ─────────────────────────────────────────────
-@mcp.tool()
-def get_artist_albums(artist_id: str, include_tracks: bool = False) -> List[Dict[str, Any]]:
-    """Get albums or singles for a Spotify artist."""
-    token = get_spotify_token()
-    headers = {"Authorization": f"Bearer {token}"}
-    params = {"include_groups": "album,single", "market": "US", "limit": 20}
-    res = requests.get(f"https://api.spotify.com/v1/artists/{artist_id}/albums", headers=headers, params=params, timeout=10)
-    res.raise_for_status()
-
-    albums_data = res.json().get("items", [])
-    albums = []
-    for a in albums_data:
-        album = {
-            "id": a["id"],
-            "name": a["name"],
-            "release_date": a["release_date"],
-            "total_tracks": a["total_tracks"],
-            "url": a["external_urls"]["spotify"],
-        }
-        if include_tracks:
-            tr_res = requests.get(f"https://api.spotify.com/v1/albums/{a['id']}/tracks", headers=headers, timeout=10)
-            tr_res.raise_for_status()
-            album["tracks"] = [t["name"] for t in tr_res.json().get("items", [])]
-        albums.append(album)
-
-    return albums
-
-
-# ─────────────────────────────────────────────
-# 🎚️ Tool 4: Get Audio Features
-# ─────────────────────────────────────────────
-@mcp.tool()
-def get_audio_features(track_ids: list) -> List[Dict[str, Any]]:
-    """Get audio features for a list of Spotify track IDs."""
-    if not track_ids:
-        return [{"error": "No track IDs provided."}]
-    token = get_spotify_token()
-    headers = {"Authorization": f"Bearer {token}"}
-    res = requests.get(
-        "https://api.spotify.com/v1/audio-features",
-        headers=headers,
-        params={"ids": ",".join(track_ids[:100])},
-        timeout=10,
-    )
-    res.raise_for_status()
-    data = res.json().get("audio_features", [])
-    return [
-        {
-            "id": f["id"],
-            "danceability": f["danceability"],
-            "energy": f["energy"],
-            "valence": f["valence"],
-            "tempo": f["tempo"],
-        }
-        for f in data if f
-    ]
-
-
-# ─────────────────────────────────────────────
-# 🎼 Tool 5: Artist Audio Profile Summary
-# ─────────────────────────────────────────────
-@mcp.tool()
-def get_artist_profile(artist_id: str) -> Dict[str, Any]:
-    """Compute average audio features across an artist’s tracks."""
-    token = get_spotify_token()
-    headers = {"Authorization": f"Bearer {token}"}
-    albums_res = requests.get(
-        f"https://api.spotify.com/v1/artists/{artist_id}/albums",
-        headers=headers,
-        params={"include_groups": "album,single", "limit": 20, "market": "US"},
-        timeout=10,
-    )
-    albums_res.raise_for_status()
-    albums = albums_res.json().get("items", [])
-    track_ids = []
-
-    for a in albums:
-        tr = requests.get(f"https://api.spotify.com/v1/albums/{a['id']}/tracks", headers=headers, timeout=10)
-        tr.raise_for_status()
-        track_ids.extend([t["id"] for t in tr.json().get("items", [])])
-
-    if not track_ids:
-        return {"message": "No tracks found for this artist."}
-
-    features_res = requests.get(
-        "https://api.spotify.com/v1/audio-features",
-        headers=headers,
-        params={"ids": ",".join(track_ids[:100])},
-        timeout=10,
-    )
-    features_res.raise_for_status()
-    features = [f for f in features_res.json().get("audio_features", []) if f]
-
-    def avg(key):
-        vals = [f[key] for f in features if f.get(key)]
-        return round(sum(vals) / len(vals), 3) if vals else 0.0
-
-    return {
-        "artist_id": artist_id,
-        "summary": {
-            "avg_danceability": avg("danceability"),
-            "avg_energy": avg("energy"),
-            "avg_valence": avg("valence"),
-            "avg_tempo": avg("tempo"),
-        },
-        "sample_tracks": len(features),
+    headers = {
+        "x-api-key": API_TOKEN,
+        "Content-Type": "application/json"
     }
 
+    logger.info(f"Calling: {url}")
 
-# ─────────────────────────────────────────────
-# 🩺 Health Endpoint
-# ─────────────────────────────────────────────
-@app.route("/")
-async def root(request) -> PlainTextResponse:
-    return PlainTextResponse("🎧 Spotify MCP server is alive and ready.")
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        logger.info(str(response.json()))
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error calling API: {e}")
+        return {"error": str(e)}
 
-
-# ─────────────────────────────────────────────
-# 🚀 Run MCP Server (Local)
-# ─────────────────────────────────────────────
 if __name__ == "__main__":
-    logging.info("🎧 Starting Spotify MCP server...")
-    uvicorn.run("server:app", host="0.0.0.0", port=3000, reload=True)
+    mcp.run(transport="streamable-http")
