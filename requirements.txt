@@ -1,3 +1,3 @@
-fastmcp>=0.4.0
-python-dotenv
+fastmcp==0.5.4
 requests
+python-dotenv
