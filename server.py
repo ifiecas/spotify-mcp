@@ -3,12 +3,9 @@ import os
 import logging
 import requests
 from dotenv import load_dotenv
-from fastmcp import FastMCP
-from fastmcp.server.errors import ToolError
-from fastmcp.server.dependencies import get_http_headers
-from fastmcp.server.middleware import Middleware, MiddlewareContext
+from fastmcp import FastMCP, ToolError, Middleware, MiddlewareContext
 
-# Load environment vars
+# Load env vars
 load_dotenv()
 
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
@@ -26,8 +23,7 @@ PORT = int(os.getenv("PORT", "8000"))
 # Authentication middleware
 class AuthMiddleware(Middleware):
     async def on_message(self, context: MiddlewareContext, call_next):
-        headers = get_http_headers()
-        api_key = headers.get("api-key")
+        api_key = context.headers.get("api-key")
 
         if not api_key or not api_key.startswith("Bearer "):
             raise ToolError("Access denied: missing or invalid token")
@@ -39,11 +35,11 @@ class AuthMiddleware(Middleware):
 
         return await call_next(context)
 
-# Create the MCP server
+# MCP server
 mcp = FastMCP("spotify-mcp", host="0.0.0.0", port=PORT)
 mcp.add_middleware(AuthMiddleware())
 
-# Spotify auth helper
+# Spotify helper
 def get_spotify_token() -> str | None:
     try:
         resp = requests.post(
@@ -110,8 +106,8 @@ def get_artist_albums(artist_id: str) -> Any:
     except Exception as e:
         return {"error": str(e)}
 
-# Run server
+# Run
 if __name__ == "__main__":
     logger.info(f"Starting Spotify MCP server on port {PORT}")
-    logger.info("Endpoint: /mcp")
+    logger.info("MCP endpoint: /mcp")
     mcp.run(transport="streamable-http")
