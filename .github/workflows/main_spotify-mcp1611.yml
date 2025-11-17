@@ -1,4 +1,4 @@
-name: Deploy Spotify MCP to Azure
+name: Deploy Spotify MCP to Azure Web App
 
 on:
   push:
@@ -11,12 +11,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
@@ -24,17 +25,17 @@ jobs:
           source antenv/bin/activate
           pip install -r requirements.txt
 
-      - name: Upload artifact
+      - name: Upload artifact for deployment
         uses: actions/upload-artifact@v4
         with:
-          name: python-app
+          name: spotify-mcp-app
           path: |
             server.py
             requirements.txt
             README.md
-            .env.example
             *.txt
             *.md
+          retention-days: 1
 
   deploy:
     runs-on: ubuntu-latest
@@ -47,17 +48,18 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: python-app
+          name: spotify-mcp-app
 
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_1B123A2E763643A4AF9338C3D7676C84 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_E20C785E4C364BC9AEA200A0CBD9DBC6 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_933770DC070547958800380E249736DC8 }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID }}
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: spotify-mcp1611
           slot-name: Production
+          package: .
