@@ -4,8 +4,10 @@ import logging
 import requests
 from dotenv import load_dotenv
 from fastmcp import FastMCP
+from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+from starlette.requests import Request
 
 # Load environment variables
 load_dotenv()
@@ -26,46 +28,42 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("spotify-mcp")
 
 # Create MCP server
-mcp = FastMCP("spotify-mcp", host="0.0.0.0", port=PORT)
+mcp = FastMCP("spotify-mcp")
 
 
 # ------------------------------------------------------
 # AUTHENTICATION MIDDLEWARE
 # ------------------------------------------------------
-class AuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
+class BearerTokenMiddleware(BaseHTTPMiddleware):
+    """Validates Bearer token for MCP endpoints"""
+    
+    async def dispatch(self, request: Request, call_next):
         # Skip auth for root path
         if request.url.path == "/":
             return await call_next(request)
         
         # Check for MCP endpoints
-        if request.url.path.startswith("/mcp"):
+        if "/mcp" in request.url.path:
             raw = None
             
             # Check Authorization header (case-insensitive)
-            for key, value in request.headers.items():
-                if key.lower() == "authorization":
-                    raw = value
-                    break
-                elif key.lower() == "api-key":
-                    raw = value
-                    break
+            auth_header = request.headers.get("authorization") or request.headers.get("api-key")
             
-            if not raw:
-                logger.warning(f"No authorization header found. Headers: {dict(request.headers)}")
+            if not auth_header:
+                logger.warning(f"No authorization header found")
                 return JSONResponse(
                     status_code=401,
                     content={"error": "Unauthorized", "message": "Missing authorization header"}
                 )
             
-            if not raw.startswith("Bearer "):
-                logger.warning(f"Invalid auth format: {raw[:20]}")
+            if not auth_header.startswith("Bearer "):
+                logger.warning(f"Invalid auth format")
                 return JSONResponse(
                     status_code=401,
-                    content={"error": "Unauthorized", "message": "Invalid authorization format"}
+                    content={"error": "Unauthorized", "message": "Invalid authorization format. Use: Bearer <token>"}
                 )
             
-            token = raw.replace("Bearer ", "").strip()
+            token = auth_header.replace("Bearer ", "").strip()
             if token != LOCAL_TOKEN:
                 logger.warning("Token validation failed")
                 return JSONResponse(
@@ -73,22 +71,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     content={"error": "Unauthorized", "message": "Invalid token"}
                 )
             
-            logger.info("Token validation successful")
+            logger.info("✅ Token validation successful")
         
         response = await call_next(request)
         return response
-
-
-# Add middleware to FastMCP's internal app
-@mcp.app_hook
-def add_middleware(app):
-    app.add_middleware(AuthMiddleware)
 
 
 # ------------------------------------------------------
 # SPOTIFY CLIENT CREDENTIALS TOKEN
 # ------------------------------------------------------
 def get_spotify_token() -> Optional[str]:
+    """Get Spotify API access token using client credentials flow"""
     try:
         resp = requests.post(
             "https://accounts.spotify.com/api/token",
@@ -112,6 +105,9 @@ def search_artist_by_name(artist_name: str) -> Any:
     
     Args:
         artist_name: The name of the artist to search for
+    
+    Returns:
+        Spotify search results with artist information
     """
     token = get_spotify_token()
     if not token:
@@ -140,6 +136,9 @@ def get_artist_top_tracks(artist_id: str) -> Any:
     
     Args:
         artist_id: The Spotify ID of the artist
+    
+    Returns:
+        List of top tracks with audio features
     """
     token = get_spotify_token()
     if not token:
@@ -168,6 +167,9 @@ def get_artist_albums(artist_id: str) -> Any:
     
     Args:
         artist_id: The Spotify ID of the artist
+    
+    Returns:
+        List of albums for the artist
     """
     token = get_spotify_token()
     if not token:
@@ -191,7 +193,19 @@ def get_artist_albums(artist_id: str) -> Any:
 # RUN SERVER
 # ------------------------------------------------------
 if __name__ == "__main__":
-    logger.info(f"Spotify MCP Server running on port {PORT}")
-    logger.info("Streaming MCP endpoints are available at /mcp")
-    logger.info(f"Authentication enabled with LOCAL_TOKEN")
-    mcp.run(transport="streamable-http")
+    logger.info(f"🎵 Spotify MCP Server starting...")
+    logger.info(f"   Port: {PORT}")
+    logger.info(f"   Endpoint: /mcp")
+    logger.info(f"   Authentication: Bearer token required")
+    
+    # Create HTTP app with custom middleware using FastMCP's official pattern
+    custom_middleware = [
+        Middleware(BearerTokenMiddleware)
+    ]
+    
+    # Get the ASGI app with middleware
+    app = mcp.http_app(custom_middleware=custom_middleware)
+    
+    # Run with uvicorn
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
