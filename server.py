@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 import os
 import logging
 import requests
@@ -10,47 +10,43 @@ load_dotenv()
 
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
-LOCAL_TOKEN = os.getenv("LOCAL_TOKEN")
-
-if not LOCAL_TOKEN:
-    raise EnvironmentError("LOCAL_TOKEN is missing. Set it in Azure App Service Configuration.")
+LOCAL_TOKEN = os.getenv("LOCAL_TOKEN")  # must be supplied by Azure
 
 if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-    raise EnvironmentError("Missing Spotify credentials")
+    raise EnvironmentError("Missing Spotify credentials (CLIENT ID + SECRET)")
+
+if not LOCAL_TOKEN:
+    raise EnvironmentError("Missing LOCAL_TOKEN env variable")
 
 PORT = int(os.getenv("PORT", "8000"))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("spotify-mcp")
 
-# Create MCP Server
+# Create MCP server
 mcp = FastMCP("spotify-mcp", host="0.0.0.0", port=PORT)
 
-
 # ------------------------------------------------------
-# HEADER VALIDATION (Copilot Studio / Custom Connector)
+# HEADER VALIDATION – supports PowerApps / Copilot Studio
 # ------------------------------------------------------
 def validate_token(headers: Dict[str, str]) -> bool:
     """
-    Accepts:
-        Authorization: Bearer <token>
-        api-key: Bearer <token>
+    Allows either:
+      Authorization: Bearer XYZ
+      api-key: Bearer XYZ
     """
-
-    # Normalize header casing (Copilot sometimes capitalizes keys)
-    headers = {k.lower(): v for k, v in headers.items()}
-
     raw = None
 
-    # Authorization header
-    if "authorization" in headers:
-        raw = headers["authorization"]
+    if headers.get("Authorization"):
+        raw = headers["Authorization"]
 
-    # api-key header
-    if not raw and "api-key" in headers:
+    elif headers.get("api-key"):
         raw = headers["api-key"]
 
-    if not raw or not raw.startswith("Bearer "):
+    if not raw:
+        return False
+
+    if not raw.startswith("Bearer "):
         return False
 
     token = raw.replace("Bearer ", "").strip()
@@ -58,9 +54,9 @@ def validate_token(headers: Dict[str, str]) -> bool:
 
 
 # ------------------------------------------------------
-# SPOTIFY AUTH TOKEN
+# SPOTIFY CLIENT CREDENTIALS TOKEN
 # ------------------------------------------------------
-def get_spotify_token() -> str | None:
+def get_spotify_token() -> Optional[str]:
     try:
         resp = requests.post(
             "https://accounts.spotify.com/api/token",
@@ -71,12 +67,12 @@ def get_spotify_token() -> str | None:
         resp.raise_for_status()
         return resp.json().get("access_token")
     except Exception as e:
-        logger.error(f"[ERROR] Spotify authentication failed: {e}")
+        logger.error(f"Spotify authentication failed: {e}")
         return None
 
 
 # ------------------------------------------------------
-# TOOLS
+# TOOL: Search Artist
 # ------------------------------------------------------
 @mcp.tool()
 def search_artist_by_name(artist_name: str, headers: Dict[str, str] = None) -> Any:
@@ -97,11 +93,13 @@ def search_artist_by_name(artist_name: str, headers: Dict[str, str] = None) -> A
         )
         resp.raise_for_status()
         return resp.json()
-
     except Exception as e:
-        return {"error": f"Spotify API error: {e}"}
+        return {"error": str(e)}
 
 
+# ------------------------------------------------------
+# TOOL: Get Top Tracks
+# ------------------------------------------------------
 @mcp.tool()
 def get_artist_top_tracks(artist_id: str, headers: Dict[str, str] = None) -> Any:
     headers = headers or {}
@@ -121,11 +119,13 @@ def get_artist_top_tracks(artist_id: str, headers: Dict[str, str] = None) -> Any
         )
         resp.raise_for_status()
         return resp.json()
-
     except Exception as e:
-        return {"error": f"Spotify API error: {e}"}
+        return {"error": str(e)}
 
 
+# ------------------------------------------------------
+# TOOL: Get Albums
+# ------------------------------------------------------
 @mcp.tool()
 def get_artist_albums(artist_id: str, headers: Dict[str, str] = None) -> Any:
     headers = headers or {}
@@ -145,9 +145,8 @@ def get_artist_albums(artist_id: str, headers: Dict[str, str] = None) -> Any:
         )
         resp.raise_for_status()
         return resp.json()
-
     except Exception as e:
-        return {"error": f"Spotify API error: {e}"}
+        return {"error": str(e)}
 
 
 # ------------------------------------------------------
@@ -155,5 +154,5 @@ def get_artist_albums(artist_id: str, headers: Dict[str, str] = None) -> Any:
 # ------------------------------------------------------
 if __name__ == "__main__":
     logger.info(f"Spotify MCP Server running on port {PORT}")
-    logger.info("MCP endpoint available at /mcp")
+    logger.info("Streaming MCP endpoints are available at /mcp")
     mcp.run(transport="streamable-http")
