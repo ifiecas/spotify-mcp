@@ -1,5 +1,3 @@
 fastmcp
-requests
 python-dotenv
-uvicorn[standard]
-starlette
+requests
