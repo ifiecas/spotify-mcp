@@ -1,10 +1,11 @@
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 import os
 import logging
 import requests
 from dotenv import load_dotenv
 from fastmcp import FastMCP
-from starlette.requests import Request
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 # Load environment variables
 load_dotenv()
@@ -24,45 +25,64 @@ PORT = int(os.getenv("PORT", "8000"))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("spotify-mcp")
 
-# Create MCP server with dependencies
-mcp = FastMCP("spotify-mcp", host="0.0.0.0", port=PORT, dependencies=[Request])
+# Create MCP server
+mcp = FastMCP("spotify-mcp", host="0.0.0.0", port=PORT)
+
 
 # ------------------------------------------------------
-# HEADER VALIDATION – supports PowerApps / Copilot Studio
+# AUTHENTICATION MIDDLEWARE
 # ------------------------------------------------------
-def validate_token(request: Request) -> bool:
-    """
-    Allows either:
-      Authorization: Bearer XYZ
-      api-key: Bearer XYZ
-    """
-    raw = None
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        # Skip auth for root path
+        if request.url.path == "/":
+            return await call_next(request)
+        
+        # Check for MCP endpoints
+        if request.url.path.startswith("/mcp"):
+            raw = None
+            
+            # Check Authorization header (case-insensitive)
+            for key, value in request.headers.items():
+                if key.lower() == "authorization":
+                    raw = value
+                    break
+                elif key.lower() == "api-key":
+                    raw = value
+                    break
+            
+            if not raw:
+                logger.warning(f"No authorization header found. Headers: {dict(request.headers)}")
+                return JSONResponse(
+                    status_code=401,
+                    content={"error": "Unauthorized", "message": "Missing authorization header"}
+                )
+            
+            if not raw.startswith("Bearer "):
+                logger.warning(f"Invalid auth format: {raw[:20]}")
+                return JSONResponse(
+                    status_code=401,
+                    content={"error": "Unauthorized", "message": "Invalid authorization format"}
+                )
+            
+            token = raw.replace("Bearer ", "").strip()
+            if token != LOCAL_TOKEN:
+                logger.warning("Token validation failed")
+                return JSONResponse(
+                    status_code=401,
+                    content={"error": "Unauthorized", "message": "Invalid token"}
+                )
+            
+            logger.info("Token validation successful")
+        
+        response = await call_next(request)
+        return response
 
-    # Check Authorization header
-    if "authorization" in request.headers:
-        raw = request.headers["authorization"]
-    # Check api-key header (alternative)
-    elif "api-key" in request.headers:
-        raw = request.headers["api-key"]
 
-    if not raw:
-        logger.warning("No authorization header found")
-        logger.warning(f"Available headers: {list(request.headers.keys())}")
-        return False
-
-    if not raw.startswith("Bearer "):
-        logger.warning(f"Invalid authorization format: {raw[:20]}...")
-        return False
-
-    token = raw.replace("Bearer ", "").strip()
-    is_valid = token == LOCAL_TOKEN
-    
-    if not is_valid:
-        logger.warning("Token validation failed")
-    else:
-        logger.info("Token validation successful")
-    
-    return is_valid
+# Add middleware to FastMCP's internal app
+@mcp.app_hook
+def add_middleware(app):
+    app.add_middleware(AuthMiddleware)
 
 
 # ------------------------------------------------------
@@ -87,13 +107,12 @@ def get_spotify_token() -> Optional[str]:
 # TOOL: Search Artist
 # ------------------------------------------------------
 @mcp.tool()
-def search_artist_by_name(artist_name: str, request: Request) -> Any:
-    """Search for artists on Spotify by name"""
+def search_artist_by_name(artist_name: str) -> Any:
+    """Search for artists on Spotify by name
     
-    if not validate_token(request):
-        logger.error("Unauthorized access attempt")
-        return {"error": "Unauthorized"}
-
+    Args:
+        artist_name: The name of the artist to search for
+    """
     token = get_spotify_token()
     if not token:
         return {"error": "Spotify authentication failed"}
@@ -103,6 +122,7 @@ def search_artist_by_name(artist_name: str, request: Request) -> Any:
             "https://api.spotify.com/v1/search",
             params={"q": artist_name, "type": "artist", "limit": 5},
             headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
         )
         resp.raise_for_status()
         return resp.json()
@@ -115,13 +135,12 @@ def search_artist_by_name(artist_name: str, request: Request) -> Any:
 # TOOL: Get Top Tracks
 # ------------------------------------------------------
 @mcp.tool()
-def get_artist_top_tracks(artist_id: str, request: Request) -> Any:
-    """Get top tracks for a Spotify artist"""
+def get_artist_top_tracks(artist_id: str) -> Any:
+    """Get top tracks for a Spotify artist
     
-    if not validate_token(request):
-        logger.error("Unauthorized access attempt")
-        return {"error": "Unauthorized"}
-
+    Args:
+        artist_id: The Spotify ID of the artist
+    """
     token = get_spotify_token()
     if not token:
         return {"error": "Spotify authentication failed"}
@@ -131,6 +150,7 @@ def get_artist_top_tracks(artist_id: str, request: Request) -> Any:
             f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks",
             params={"market": "AU"},
             headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
         )
         resp.raise_for_status()
         return resp.json()
@@ -143,13 +163,12 @@ def get_artist_top_tracks(artist_id: str, request: Request) -> Any:
 # TOOL: Get Albums
 # ------------------------------------------------------
 @mcp.tool()
-def get_artist_albums(artist_id: str, request: Request) -> Any:
-    """Get albums for a Spotify artist"""
+def get_artist_albums(artist_id: str) -> Any:
+    """Get albums for a Spotify artist
     
-    if not validate_token(request):
-        logger.error("Unauthorized access attempt")
-        return {"error": "Unauthorized"}
-
+    Args:
+        artist_id: The Spotify ID of the artist
+    """
     token = get_spotify_token()
     if not token:
         return {"error": "Spotify authentication failed"}
@@ -159,6 +178,7 @@ def get_artist_albums(artist_id: str, request: Request) -> Any:
             f"https://api.spotify.com/v1/artists/{artist_id}/albums",
             params={"market": "AU", "limit": 10},
             headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
         )
         resp.raise_for_status()
         return resp.json()
@@ -173,4 +193,5 @@ def get_artist_albums(artist_id: str, request: Request) -> Any:
 if __name__ == "__main__":
     logger.info(f"Spotify MCP Server running on port {PORT}")
     logger.info("Streaming MCP endpoints are available at /mcp")
+    logger.info(f"Authentication enabled with LOCAL_TOKEN")
     mcp.run(transport="streamable-http")
