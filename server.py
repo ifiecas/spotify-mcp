@@ -4,7 +4,7 @@ import logging
 import requests
 from dotenv import load_dotenv
 from fastmcp import FastMCP
-from fastmcp.errors import ToolError
+from fastmcp.server.errors import ToolError
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 
