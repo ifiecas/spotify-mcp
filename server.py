@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict
 import os
 import logging
 import requests
@@ -18,20 +18,43 @@ if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
 PORT = int(os.getenv("PORT", "8000"))
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("spotify-mcp")
 
-# Create MCP server
+# Create MCP Server
 mcp = FastMCP("spotify-mcp", host="0.0.0.0", port=PORT)
 
-# Basic request-level token validation (no Middleware in latest FastMCP)
-def validate_token(headers):
-    auth = headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        return False
-    token = auth.replace("Bearer ", "").strip()
+
+# ------------------------------------------------------
+# HEADER VALIDATION (Fixes Copilot Studio Authorization)
+# ------------------------------------------------------
+def validate_token(headers: Dict[str, str]) -> bool:
+    """
+    Accepts both:
+    Authorization: Bearer <token>
+    api-key: Bearer <token>
+    """
+
+    token = None
+
+    # Authorization header
+    if "Authorization" in headers:
+        raw = headers["Authorization"]
+        if raw.startswith("Bearer "):
+            token = raw.replace("Bearer ", "").strip()
+
+    # api-key header (Power Apps / Copilot Studio)
+    if not token and "api-key" in headers:
+        raw = headers["api-key"]
+        if raw.startswith("Bearer "):
+            token = raw.replace("Bearer ", "").strip()
+
+    # Validate final extracted token
     return token == LOCAL_TOKEN
 
-# Spotify helper
+
+# ------------------------------------------------------
+# SPOTIFY TOKEN REQUEST
+# ------------------------------------------------------
 def get_spotify_token() -> str | None:
     try:
         resp = requests.post(
@@ -43,12 +66,15 @@ def get_spotify_token() -> str | None:
         resp.raise_for_status()
         return resp.json().get("access_token")
     except Exception as e:
-        logger.error(f"Spotify auth failed: {e}")
+        logger.error(f"Spotify authentication failed: {e}")
         return None
 
-# ---------- Tools ----------
+
+# ------------------------------------------------------
+# TOOLS
+# ------------------------------------------------------
 @mcp.tool()
-def search_artist_by_name(artist_name: str, headers=None) -> Any:
+def search_artist_by_name(artist_name: str, headers: Dict[str, str] = None) -> Any:
     if not validate_token(headers or {}):
         return {"error": "Unauthorized"}
 
@@ -67,8 +93,9 @@ def search_artist_by_name(artist_name: str, headers=None) -> Any:
     except Exception as e:
         return {"error": str(e)}
 
+
 @mcp.tool()
-def get_artist_top_tracks(artist_id: str, headers=None) -> Any:
+def get_artist_top_tracks(artist_id: str, headers: Dict[str, str] = None) -> Any:
     if not validate_token(headers or {}):
         return {"error": "Unauthorized"}
 
@@ -87,8 +114,9 @@ def get_artist_top_tracks(artist_id: str, headers=None) -> Any:
     except Exception as e:
         return {"error": str(e)}
 
+
 @mcp.tool()
-def get_artist_albums(artist_id: str, headers=None) -> Any:
+def get_artist_albums(artist_id: str, headers: Dict[str, str] = None) -> Any:
     if not validate_token(headers or {}):
         return {"error": "Unauthorized"}
 
@@ -108,8 +136,10 @@ def get_artist_albums(artist_id: str, headers=None) -> Any:
         return {"error": str(e)}
 
 
-# ---------- Run server ----------
+# ------------------------------------------------------
+# RUN SERVER
+# ------------------------------------------------------
 if __name__ == "__main__":
-    logger.info(f"Spotify MCP Server running at :{PORT}")
-    logger.info("MCP Path: /mcp")
+    logger.info(f"Spotify MCP running on port {PORT}")
+    logger.info("MCP endpoint available at /mcp")
     mcp.run(transport="streamable-http")
