@@ -4,7 +4,6 @@ import logging
 import requests
 from dotenv import load_dotenv
 from fastmcp import FastMCP
-from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.requests import Request
@@ -198,13 +197,11 @@ if __name__ == "__main__":
     logger.info(f"   Endpoint: /mcp")
     logger.info(f"   Authentication: Bearer token required")
     
-    # Create HTTP app with custom middleware using FastMCP's official pattern
-    custom_middleware = [
-        Middleware(BearerTokenMiddleware)
-    ]
+    # Get the HTTP app
+    app = mcp.http_app()
     
-    # Get the ASGI app with middleware
-    app = mcp.http_app(custom_middleware=custom_middleware)
+    # Add middleware manually
+    app.add_middleware(BearerTokenMiddleware)
     
     # Run with uvicorn
     import uvicorn
