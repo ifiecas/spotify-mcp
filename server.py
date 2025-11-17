@@ -4,6 +4,7 @@ import logging
 import requests
 from dotenv import load_dotenv
 from fastmcp import FastMCP
+from starlette.requests import Request
 
 # Load environment variables
 load_dotenv()
@@ -23,13 +24,13 @@ PORT = int(os.getenv("PORT", "8000"))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("spotify-mcp")
 
-# Create MCP server
-mcp = FastMCP("spotify-mcp", host="0.0.0.0", port=PORT)
+# Create MCP server with dependencies
+mcp = FastMCP("spotify-mcp", host="0.0.0.0", port=PORT, dependencies=[Request])
 
 # ------------------------------------------------------
 # HEADER VALIDATION – supports PowerApps / Copilot Studio
 # ------------------------------------------------------
-def validate_token(headers: Dict[str, str]) -> bool:
+def validate_token(request: Request) -> bool:
     """
     Allows either:
       Authorization: Bearer XYZ
@@ -37,20 +38,31 @@ def validate_token(headers: Dict[str, str]) -> bool:
     """
     raw = None
 
-    if headers.get("Authorization"):
-        raw = headers["Authorization"]
-
-    elif headers.get("api-key"):
-        raw = headers["api-key"]
+    # Check Authorization header
+    if "authorization" in request.headers:
+        raw = request.headers["authorization"]
+    # Check api-key header (alternative)
+    elif "api-key" in request.headers:
+        raw = request.headers["api-key"]
 
     if not raw:
+        logger.warning("No authorization header found")
+        logger.warning(f"Available headers: {list(request.headers.keys())}")
         return False
 
     if not raw.startswith("Bearer "):
+        logger.warning(f"Invalid authorization format: {raw[:20]}...")
         return False
 
     token = raw.replace("Bearer ", "").strip()
-    return token == LOCAL_TOKEN
+    is_valid = token == LOCAL_TOKEN
+    
+    if not is_valid:
+        logger.warning("Token validation failed")
+    else:
+        logger.info("Token validation successful")
+    
+    return is_valid
 
 
 # ------------------------------------------------------
@@ -75,10 +87,11 @@ def get_spotify_token() -> Optional[str]:
 # TOOL: Search Artist
 # ------------------------------------------------------
 @mcp.tool()
-def search_artist_by_name(artist_name: str, headers: Dict[str, str] = None) -> Any:
-    headers = headers or {}
-
-    if not validate_token(headers):
+def search_artist_by_name(artist_name: str, request: Request) -> Any:
+    """Search for artists on Spotify by name"""
+    
+    if not validate_token(request):
+        logger.error("Unauthorized access attempt")
         return {"error": "Unauthorized"}
 
     token = get_spotify_token()
@@ -94,6 +107,7 @@ def search_artist_by_name(artist_name: str, headers: Dict[str, str] = None) -> A
         resp.raise_for_status()
         return resp.json()
     except Exception as e:
+        logger.error(f"Search failed: {e}")
         return {"error": str(e)}
 
 
@@ -101,10 +115,11 @@ def search_artist_by_name(artist_name: str, headers: Dict[str, str] = None) -> A
 # TOOL: Get Top Tracks
 # ------------------------------------------------------
 @mcp.tool()
-def get_artist_top_tracks(artist_id: str, headers: Dict[str, str] = None) -> Any:
-    headers = headers or {}
-
-    if not validate_token(headers):
+def get_artist_top_tracks(artist_id: str, request: Request) -> Any:
+    """Get top tracks for a Spotify artist"""
+    
+    if not validate_token(request):
+        logger.error("Unauthorized access attempt")
         return {"error": "Unauthorized"}
 
     token = get_spotify_token()
@@ -120,6 +135,7 @@ def get_artist_top_tracks(artist_id: str, headers: Dict[str, str] = None) -> Any
         resp.raise_for_status()
         return resp.json()
     except Exception as e:
+        logger.error(f"Get top tracks failed: {e}")
         return {"error": str(e)}
 
 
@@ -127,10 +143,11 @@ def get_artist_top_tracks(artist_id: str, headers: Dict[str, str] = None) -> Any
 # TOOL: Get Albums
 # ------------------------------------------------------
 @mcp.tool()
-def get_artist_albums(artist_id: str, headers: Dict[str, str] = None) -> Any:
-    headers = headers or {}
-
-    if not validate_token(headers):
+def get_artist_albums(artist_id: str, request: Request) -> Any:
+    """Get albums for a Spotify artist"""
+    
+    if not validate_token(request):
+        logger.error("Unauthorized access attempt")
         return {"error": "Unauthorized"}
 
     token = get_spotify_token()
@@ -146,6 +163,7 @@ def get_artist_albums(artist_id: str, headers: Dict[str, str] = None) -> Any:
         resp.raise_for_status()
         return resp.json()
     except Exception as e:
+        logger.error(f"Get albums failed: {e}")
         return {"error": str(e)}
 
 
