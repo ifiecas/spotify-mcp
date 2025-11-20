@@ -1083,18 +1083,12 @@ Contributions are welcome! Please:
 
 ---
 
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
 ## 👤 Author
 
 **Ivy Fiecas-Borjal**
 
 - GitHub: [@ifiecas](https://github.com/ifiecas)
-- LinkedIn: [Connect with me](https://www.linkedin.com/in/ivy-fiecas-borjal) <!-- Update with your actual LinkedIn -->
+- LinkedIn: [Connect with me](https://www.linkedin.com/in/ifiecas/)
 
 ---
 
@@ -1104,13 +1098,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Powered by [Spotify Web API](https://developer.spotify.com/)
 - Deployed on [Azure App Service](https://azure.microsoft.com/en-us/products/app-service)
 - Integrated with [Microsoft Copilot Studio](https://www.microsoft.com/en-us/microsoft-copilot/microsoft-copilot-studio)
-- Inspired by [April Dunnam's MCP Tutorial](https://youtu.be/5gWBoc5Rx3w?si=ps4Q_uqzqOJBz2iG) 🎥
 
----
-
-## ⭐ Show Your Support
-
-Give a ⭐️ if this project helped you!
 
 ---
 
@@ -1120,6 +1108,4 @@ This project was built following concepts from:
 - **How to Build a Python-based Custom HTTP MCP Server and Connect it with Copilot Studio** by Rafsan Huseynov and Maciek Jarka
 - Watch: [[https://youtu.be/5gWBoc5Rx3w?si=ps4Q_uqzqOJBz2iG](https://youtu.be/5gWBoc5Rx3w?si=x9QJPjXh6jFTwO_4)]([https://youtu.be/5gWBoc5Rx3w?si=ps4Q_uqzqOJBz2iG](https://youtu.be/5gWBoc5Rx3w?si=x9QJPjXh6jFTwO_4))
 
----
 
-**Made with ❤️ and 🎵**
