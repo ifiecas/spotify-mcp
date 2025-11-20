@@ -9,8 +9,15 @@ A **Model Context Protocol (MCP)** server that connects to the Spotify Web API, 
 ## 🌟 Features
 
 ✅ **Search Artists** - Find artists on Spotify by name  
+✅ **Search Tracks** - Search for songs by name, artist, or both  
 ✅ **Get Top Tracks** - Retrieve an artist's most popular tracks  
 ✅ **Get Albums** - List albums for any Spotify artist  
+✅ **Artist Information** - Get detailed artist info (genres, followers, popularity)  
+✅ **Related Artists** - Find similar artists based on Spotify's recommendations  
+✅ **Audio Features** - Analyze tracks for energy, danceability, tempo, valence, etc.  
+✅ **Track Details** - Get complete information about specific tracks  
+✅ **Album Details** - View full album information with track listings  
+✅ **Batch Audio Analysis** - Get audio features for up to 100 tracks at once  
 ✅ **Secure Authentication** - Bearer token authentication with middleware  
 ✅ **Azure Deployment** - Automated CI/CD with GitHub Actions  
 ✅ **Copilot Studio Ready** - Direct integration with Microsoft Copilot Studio  
@@ -213,10 +220,73 @@ security:
 
 ### Step 4: Test Your Agent
 
-Try these prompts:
+Try these prompts to test all the different tools:
+
+**Artist Search:**
 - "Search for Billie Eilish on Spotify"
+- "Find the artist Drake"
+
+**Track Search:**
+- "Find the song Blinding Lights by The Weeknd"
+- "Search for tracks by Post Malone"
+
+**Artist Information:**
+- "Tell me about Taylor Swift - what genres does she make?"
+- "How many followers does Ariana Grande have?"
+
+**Top Tracks & Albums:**
 - "Get top tracks for Taylor Swift"
 - "Show me The Weeknd's albums"
+
+**Related Artists:**
+- "Find artists similar to Billie Eilish"
+- "Who are artists like Drake?"
+
+**Audio Analysis:**
+- "What's the tempo and energy of Blinding Lights?" (you'll need the track ID)
+- "Analyze the audio features of track 0VjIjW4GlUZAMYd2vXMi3b"
+- "Is this track danceable and energetic?"
+
+**Detailed Information:**
+- "Get full details for track ID 0VjIjW4GlUZAMYd2vXMi3b"
+- "Tell me about the album Midnights"
+
+---
+
+## 💡 Use Cases
+
+With 11 powerful Spotify tools, your Copilot can handle sophisticated music queries:
+
+### 🎯 Music Discovery
+- "Find songs similar to Blinding Lights"
+- "Who are artists like Billie Eilish?"
+- "Search for upbeat dance tracks"
+
+### 📊 Music Analysis
+- "What's the energy level and tempo of this track?"
+- "Compare the danceability of three different songs"
+- "Is this song more acoustic or electronic?"
+
+### 🎤 Artist Research
+- "Tell me about Taylor Swift's genre and popularity"
+- "How many followers does Drake have?"
+- "What are The Weeknd's top 5 songs?"
+
+### 📀 Album Exploration
+- "Show me all tracks from the album Midnights"
+- "What albums did Ariana Grande release?"
+- "Get details about this album"
+
+### 🎵 Track Discovery
+- "Find the song Anti-Hero by Taylor Swift"
+- "Search for tracks with 'love' in the title"
+- "Get a 30-second preview of this song"
+
+### 🔗 Recommendation Chains
+Your Copilot can chain multiple tools together:
+1. Search for an artist → Get their top track → Analyze its audio features
+2. Find an album → Get all tracks → Compare their energy levels
+3. Search artist → Find similar artists → Get their top tracks
 
 ---
 
@@ -236,7 +306,31 @@ Search for artists on Spotify by name.
 }
 ```
 
-### 2. `get_artist_top_tracks`
+**Returns:** Up to 5 matching artists with their Spotify IDs, images, and popularity scores.
+
+---
+
+### 2. `search_tracks`
+
+Search for tracks on Spotify by name, artist, or both.
+
+**Parameters:**
+- `query` (string): Search query (track name, artist, or combination)
+- `limit` (integer, optional): Maximum number of results (1-50, default: 10)
+
+**Example:**
+```json
+{
+  "query": "Blinding Lights The Weeknd",
+  "limit": 5
+}
+```
+
+**Returns:** Track search results with names, artists, albums, and preview URLs.
+
+---
+
+### 3. `get_artist_top_tracks`
 
 Get the top tracks for a Spotify artist.
 
@@ -250,7 +344,11 @@ Get the top tracks for a Spotify artist.
 }
 ```
 
-### 3. `get_artist_albums`
+**Returns:** List of the artist's most popular tracks.
+
+---
+
+### 4. `get_artist_albums`
 
 Get albums for a Spotify artist.
 
@@ -263,6 +361,167 @@ Get albums for a Spotify artist.
   "artist_id": "06HL4z0CvFAxyc27GXpf02"
 }
 ```
+
+**Returns:** List of albums (up to 10) with release dates and images.
+
+---
+
+### 5. `get_artist_info`
+
+Get detailed information about a Spotify artist.
+
+**Parameters:**
+- `artist_id` (string): The Spotify ID of the artist
+
+**Example:**
+```json
+{
+  "artist_id": "06HL4z0CvFAxyc27GXpf02"
+}
+```
+
+**Returns:** Artist details including:
+- Genres
+- Popularity score (0-100)
+- Follower count
+- Artist images
+- Spotify URL
+
+---
+
+### 6. `get_related_artists`
+
+Get artists similar to a given artist based on Spotify's recommendation algorithm.
+
+**Parameters:**
+- `artist_id` (string): The Spotify ID of the artist
+
+**Example:**
+```json
+{
+  "artist_id": "06HL4z0CvFAxyc27GXpf02"
+}
+```
+
+**Returns:** List of up to 20 similar artists.
+
+---
+
+### 7. `get_track_audio_features`
+
+Get audio analysis features for a track (energy, danceability, tempo, etc.).
+
+**Parameters:**
+- `track_id` (string): The Spotify ID of the track
+
+**Example:**
+```json
+{
+  "track_id": "0VjIjW4GlUZAMYd2vXMi3b"
+}
+```
+
+**Returns:** Audio features including:
+- **danceability** (0.0-1.0): How suitable for dancing
+- **energy** (0.0-1.0): Intensity and activity
+- **key** (0-11): Musical key (0 = C, 1 = C#, etc.)
+- **loudness** (dB): Overall loudness
+- **mode** (0-1): Major (1) or minor (0)
+- **speechiness** (0.0-1.0): Presence of spoken words
+- **acousticness** (0.0-1.0): Acoustic vs electric
+- **instrumentalness** (0.0-1.0): Vocal vs instrumental
+- **liveness** (0.0-1.0): Presence of live audience
+- **valence** (0.0-1.0): Musical positivity/happiness
+- **tempo** (BPM): Beats per minute
+- **duration_ms**: Track length in milliseconds
+
+---
+
+### 8. `get_track_details`
+
+Get detailed information about a specific track.
+
+**Parameters:**
+- `track_id` (string): The Spotify ID of the track
+
+**Example:**
+```json
+{
+  "track_id": "0VjIjW4GlUZAMYd2vXMi3b"
+}
+```
+
+**Returns:** Complete track information including:
+- Track name
+- Artists
+- Album
+- Duration
+- Popularity score
+- Preview URL (30-second clip)
+- Explicit content flag
+- Available markets
+
+---
+
+### 9. `get_album_details`
+
+Get detailed information about a Spotify album.
+
+**Parameters:**
+- `album_id` (string): The Spotify ID of the album
+
+**Example:**
+```json
+{
+  "album_id": "4yP0hdKOZPNshxUOjY0cZj"
+}
+```
+
+**Returns:** Album details including:
+- Album name
+- Artists
+- Release date
+- Total tracks
+- Full track listing
+- Album images
+- Popularity score
+- Label and copyright info
+
+---
+
+### 10. `get_multiple_tracks_audio_features`
+
+Get audio features for multiple tracks at once (batch operation).
+
+**Parameters:**
+- `track_ids` (string): Comma-separated list of Spotify track IDs (up to 100)
+
+**Example:**
+```json
+{
+  "track_ids": "0VjIjW4GlUZAMYd2vXMi3b,4cOdK2wGLETKBW3PvgPWqT,3n3Ppam7vgaVa1iaRUc9Lp"
+}
+```
+
+**Returns:** Array of audio features for all requested tracks, useful for comparing multiple songs.
+
+---
+
+### 11. `get_artist_albums` (Enhanced)
+
+Get albums for a Spotify artist with filtering options.
+
+**Parameters:**
+- `artist_id` (string): The Spotify ID of the artist
+
+**Example:**
+```json
+{
+  "artist_id": "06HL4z0CvFAxyc27GXpf02"
+}
+```
+
+**Returns:** List of albums with metadata.
 
 ---
 
@@ -345,6 +604,7 @@ Or in Azure Portal:
    Port: 8000
    Endpoint: /mcp
    Authentication: Bearer token required
+   Available Tools: 11
 INFO:     Started server process
 INFO:     Uvicorn running on http://0.0.0.0:8000
 ```
@@ -389,10 +649,31 @@ INFO:mcp.server.lowlevel.server:Processing request of type CallToolRequest
 
 ---
 
+## 🎼 Spotify API Features Used
+
+This MCP server leverages the following Spotify Web API endpoints:
+
+| Endpoint | Tool | Rate Limit |
+|----------|------|------------|
+| `/search` | `search_artist_by_name`, `search_tracks` | Standard |
+| `/artists/{id}` | `get_artist_info` | Standard |
+| `/artists/{id}/top-tracks` | `get_artist_top_tracks` | Standard |
+| `/artists/{id}/albums` | `get_artist_albums` | Standard |
+| `/artists/{id}/related-artists` | `get_related_artists` | Standard |
+| `/tracks/{id}` | `get_track_details` | Standard |
+| `/albums/{id}` | `get_album_details` | Standard |
+| `/audio-features/{id}` | `get_track_audio_features` | Standard |
+| `/audio-features?ids=` | `get_multiple_tracks_audio_features` | Standard |
+
+**Note:** All endpoints use Client Credentials flow - no user authentication required.
+
+---
+
 ## 🔄 API Rate Limits
 
 - **Spotify API:** Rate limits apply per Client ID
-- **Best Practice:** Implement caching for frequently requested data
+- **Recommendation:** Implement caching for frequently requested data
+- **Best Practice:** Use batch endpoints (like `get_multiple_tracks_audio_features`) when possible
 
 ---
 
@@ -418,10 +699,17 @@ Contributions are welcome! Please:
 
 ---
 
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
 ## 👤 Author
 
 **Ivy Fiecas-Borjal**
 
+- GitHub: [@ifiecas](https://github.com/ifiecas)
 
 ---
 
@@ -431,5 +719,22 @@ Contributions are welcome! Please:
 - Powered by [Spotify Web API](https://developer.spotify.com/)
 - Deployed on [Azure App Service](https://azure.microsoft.com/en-us/products/app-service)
 - Integrated with [Microsoft Copilot Studio](https://www.microsoft.com/en-us/microsoft-copilot/microsoft-copilot-studio)
+- Inspired by [April Dunnam's MCP Tutorial](https://youtu.be/5gWBoc5Rx3w?si=ps4Q_uqzqOJBz2iG) 🎥
 
 ---
+
+## ⭐ Show Your Support
+
+Give a ⭐️ if this project helped you!
+
+---
+
+## 📺 Tutorial
+
+This project was built following concepts from:
+- **How to Build a Python-based Custom HTTP MCP Server and Connect it with Copilot Studio** by Rafsan Huseynov and Maciek Jarka
+- Watch: [https://youtu.be/5gWBoc5Rx3w?si=ps4Q_uqzqOJBz2iG](https://youtu.be/5gWBoc5Rx3w?si=ps4Q_uqzqOJBz2iG)
+
+---
+
+**Made with ❤️ and 🎵**
