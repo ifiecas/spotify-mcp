@@ -62,7 +62,7 @@ A **Model Context Protocol (MCP)** server that connects to the Spotify Web API, 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/spotify-mcp.git
+git clone https://github.com/ifiecas/spotify-mcp.git
 cd spotify-mcp
 ```
 
@@ -550,13 +550,397 @@ spotify-mcp/
 3. **If Valid** → Request proceeds to MCP server
 4. **If Invalid** → Returns 401 Unauthorized
 
-### Best Practices
+### Current Implementation (Development/Demo)
 
-- ✅ Never commit `.env` file to Git
-- ✅ Use strong, random tokens for `LOCAL_TOKEN`
-- ✅ Rotate tokens periodically
-- ✅ Use Azure Key Vault for production secrets
-- ✅ Enable HTTPS only (enforced by Azure)
+The current implementation uses a **simple Bearer token** authentication suitable for:
+- ✅ Development and testing
+- ✅ Single-tenant deployments
+- ✅ Internal corporate use with network isolation
+- ✅ Proof of concept demonstrations
+
+**Limitations:**
+- ❌ Single shared token for all users
+- ❌ No user-specific access control
+- ❌ No token expiration
+- ❌ No audit logging of user actions
+
+---
+
+## 🔐 Production Security Best Practices
+
+### 1. **Implement OAuth 2.0 / OpenID Connect**
+
+For production, replace the simple Bearer token with proper OAuth:
+
+```python
+from fastmcp.server.auth import AzureOAuthProvider
+
+# Use Azure Entra ID (recommended for Microsoft ecosystem)
+auth = AzureOAuthProvider(
+    tenant_id=os.getenv("AZURE_TENANT_ID"),
+    client_id=os.getenv("AZURE_CLIENT_ID"),
+    client_secret=os.getenv("AZURE_CLIENT_SECRET"),
+    redirect_uri=os.getenv("OAUTH_REDIRECT_URI"),
+    scopes=["openid", "profile", "email"]
+)
+
+mcp = FastMCP("spotify-mcp", auth=auth)
+```
+
+**Supported Identity Providers:**
+- Azure Entra ID (Microsoft 365)
+- Google Workspace
+- GitHub
+- Auth0
+- WorkOS
+- AWS Cognito
+
+**Benefits:**
+- ✅ User-specific authentication
+- ✅ Automatic token expiration and refresh
+- ✅ Single Sign-On (SSO) support
+- ✅ Per-user audit trails
+
+---
+
+### 2. **Use Azure Key Vault for Secrets**
+
+Never store secrets in environment variables in production.
+
+**Setup Azure Key Vault:**
+
+```python
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+
+# Connect to Key Vault
+credential = DefaultAzureCredential()
+vault_url = f"https://{os.getenv('KEY_VAULT_NAME')}.vault.azure.net"
+client = SecretClient(vault_url=vault_url, credential=credential)
+
+# Retrieve secrets
+SPOTIFY_CLIENT_ID = client.get_secret("SpotifyClientId").value
+SPOTIFY_CLIENT_SECRET = client.get_secret("SpotifyClientSecret").value
+```
+
+**Configure Azure Web App:**
+1. Enable **Managed Identity** on your Web App
+2. Grant the Managed Identity access to Key Vault
+3. Reference secrets using `@Microsoft.KeyVault(...)` syntax
+
+---
+
+### 3. **Implement Rate Limiting**
+
+Protect against abuse with rate limiting middleware:
+
+```python
+from fastmcp.server.middleware import RateLimitMiddleware
+
+mcp.add_middleware(
+    RateLimitMiddleware(
+        max_requests=100,
+        window_seconds=60,
+        by_client_id=True  # Rate limit per client
+    )
+)
+```
+
+**Recommended Limits:**
+- **Development:** 100 requests/minute per client
+- **Production:** 1000 requests/minute per client
+- **Public API:** 60 requests/minute per IP address
+
+---
+
+### 4. **Add Request Logging and Audit Trail**
+
+Track all API usage for security and compliance:
+
+```python
+from fastmcp.server.middleware import LoggingMiddleware
+import logging
+
+# Configure structured logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('audit.log'),
+        logging.StreamHandler()
+    ]
+)
+
+class AuditMiddleware(Middleware):
+    async def on_call_tool(self, context: MiddlewareContext, call_next):
+        user_id = context.request_context.user_id  # From OAuth
+        tool_name = context.params.get("name")
+        
+        logger.info(f"User {user_id} called tool {tool_name}")
+        
+        result = await call_next(context)
+        return result
+
+mcp.add_middleware(AuditMiddleware())
+```
+
+**Log to Azure Application Insights:**
+```python
+from opencensus.ext.azure.log_exporter import AzureLogHandler
+
+logger.addHandler(AzureLogHandler(
+    connection_string=os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
+))
+```
+
+---
+
+### 5. **Implement Role-Based Access Control (RBAC)**
+
+Control which users can access which tools:
+
+```python
+from fastmcp.server.middleware import Middleware
+
+class RBACMiddleware(Middleware):
+    ADMIN_TOOLS = {"get_multiple_tracks_audio_features"}
+    
+    async def on_call_tool(self, context: MiddlewareContext, call_next):
+        user_roles = context.request_context.user_roles  # From OAuth token
+        tool_name = context.params.get("name")
+        
+        # Restrict admin-only tools
+        if tool_name in self.ADMIN_TOOLS and "admin" not in user_roles:
+            return ToolResult(
+                content=[{"type": "text", "text": "Unauthorized: Admin access required"}]
+            )
+        
+        return await call_next(context)
+
+mcp.add_middleware(RBACMiddleware())
+```
+
+---
+
+### 6. **Enable Azure Web App Authentication**
+
+Use Azure's built-in authentication (EasyAuth):
+
+**In Azure Portal:**
+1. Go to your Web App → **Authentication**
+2. Click **Add identity provider**
+3. Choose **Microsoft** (or other provider)
+4. Configure:
+   - **Restrict access:** Require authentication
+   - **Unauthenticated requests:** HTTP 401
+   - **Token store:** Enabled
+
+**Benefits:**
+- ✅ No code changes needed
+- ✅ Authentication handled at platform level
+- ✅ Works with Copilot Studio's OAuth flow
+- ✅ Automatic token validation
+
+---
+
+### 7. **Use Environment-Based Configuration**
+
+Separate dev/staging/prod configurations:
+
+```python
+import os
+
+ENV = os.getenv("ENVIRONMENT", "development")
+
+if ENV == "production":
+    # Strict security settings
+    REQUIRE_HTTPS = True
+    MASK_ERROR_DETAILS = True
+    ENABLE_RATE_LIMITING = True
+    LOG_LEVEL = "WARNING"
+elif ENV == "staging":
+    REQUIRE_HTTPS = True
+    MASK_ERROR_DETAILS = True
+    ENABLE_RATE_LIMITING = False
+    LOG_LEVEL = "INFO"
+else:  # development
+    REQUIRE_HTTPS = False
+    MASK_ERROR_DETAILS = False
+    ENABLE_RATE_LIMITING = False
+    LOG_LEVEL = "DEBUG"
+
+mcp = FastMCP(
+    "spotify-mcp",
+    mask_error_details=MASK_ERROR_DETAILS
+)
+```
+
+---
+
+### 8. **Secure Spotify API Credentials**
+
+**Best Practice: Use Service Principal per Environment**
+
+1. Create separate Spotify apps for dev/staging/prod
+2. Rotate credentials regularly (every 90 days)
+3. Monitor for unusual API usage patterns
+
+**Implement Token Rotation:**
+
+```python
+import time
+from threading import Lock
+
+class SpotifyTokenManager:
+    def __init__(self):
+        self.token = None
+        self.expiry = 0
+        self.lock = Lock()
+    
+    def get_token(self) -> str:
+        with self.lock:
+            if time.time() >= self.expiry:
+                self.refresh_token()
+            return self.token
+    
+    def refresh_token(self):
+        # Get new token from Spotify
+        resp = requests.post(...)
+        self.token = resp.json()["access_token"]
+        self.expiry = time.time() + resp.json()["expires_in"] - 60
+
+token_manager = SpotifyTokenManager()
+```
+
+---
+
+### 9. **Enable CORS Properly**
+
+Only allow specific origins in production:
+
+```python
+from starlette.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://copilotstudio.microsoft.com",
+        "https://your-company-domain.com"
+    ],  # Never use ["*"] in production
+    allow_credentials=True,
+    allow_methods=["POST"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+```
+
+---
+
+### 10. **Implement Health Checks and Monitoring**
+
+Add health endpoint for Azure monitoring:
+
+```python
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check():
+    # Check Spotify API connectivity
+    token = get_spotify_token()
+    if not token:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "reason": "Cannot authenticate with Spotify"}
+        )
+    
+    return JSONResponse(
+        content={
+            "status": "healthy",
+            "version": "2.0.0",
+            "tools_count": 11
+        }
+    )
+```
+
+**Configure in Azure:**
+- Set Health Check Path: `/health`
+- Enable **Application Insights**
+- Set up **Alerts** for failures
+
+---
+
+### 11. **Data Privacy and Compliance**
+
+**GDPR Compliance:**
+- Log only necessary user information
+- Implement data retention policies
+- Provide user data export/deletion
+
+**Example Audit Log Cleanup:**
+```python
+import datetime
+
+def cleanup_old_logs():
+    """Delete logs older than 90 days (GDPR requirement)"""
+    retention_days = 90
+    cutoff_date = datetime.datetime.now() - datetime.timedelta(days=retention_days)
+    # Delete logs older than cutoff_date
+```
+
+---
+
+## 🛡️ Security Checklist for Production
+
+### Before Going Live:
+
+- [ ] Replace simple Bearer token with OAuth 2.0
+- [ ] Move all secrets to Azure Key Vault
+- [ ] Enable Azure Web App Managed Identity
+- [ ] Configure Azure Web App Authentication (EasyAuth)
+- [ ] Implement rate limiting (100-1000 req/min)
+- [ ] Add audit logging with Application Insights
+- [ ] Set up RBAC for sensitive tools
+- [ ] Enable CORS with specific origins only
+- [ ] Add health check endpoint
+- [ ] Configure alerts for failures
+- [ ] Test token expiration and refresh
+- [ ] Implement error masking (`mask_error_details=True`)
+- [ ] Set up separate Spotify apps per environment
+- [ ] Enable HTTPS only (disable HTTP)
+- [ ] Configure Web App firewall rules
+- [ ] Set up Azure Monitor dashboards
+- [ ] Document incident response procedures
+- [ ] Perform security penetration testing
+- [ ] Review and sign BAA if handling PHI/PII
+
+---
+
+## 📋 Compliance Considerations
+
+### Data Handling
+- **Spotify Data:** Subject to Spotify's Terms of Service
+- **User Data:** May require GDPR/CCPA compliance
+- **Audit Logs:** Retain for compliance (typically 90 days to 7 years)
+
+### Recommended Policies
+1. **Data Retention Policy** - How long to keep logs and cached data
+2. **Incident Response Plan** - What to do if security breach occurs
+3. **Access Control Policy** - Who can access what tools
+4. **API Usage Policy** - Rate limits and acceptable use
+
+---
+
+## 🔗 Security Resources
+
+- [Azure Security Best Practices](https://learn.microsoft.com/en-us/azure/security/fundamentals/best-practices-and-patterns)
+- [FastMCP Authentication Guide](https://gofastmcp.com/servers/auth/authentication)
+- [OWASP API Security Top 10](https://owasp.org/www-project-api-security/)
+- [Spotify API Terms of Service](https://developer.spotify.com/terms)
+
+---
+
+### Best Practices Summary
+
+✅ **Development:** Simple Bearer token (current implementation)  
+✅ **Staging:** OAuth + Key Vault + Rate Limiting  
+✅ **Production:** OAuth + Key Vault + Rate Limiting + RBAC + Audit Logging + Monitoring
 
 ---
 
@@ -710,6 +1094,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Ivy Fiecas-Borjal**
 
 - GitHub: [@ifiecas](https://github.com/ifiecas)
+- LinkedIn: [Connect with me](https://www.linkedin.com/in/ivy-fiecas-borjal) <!-- Update with your actual LinkedIn -->
 
 ---
 
@@ -733,7 +1118,7 @@ Give a ⭐️ if this project helped you!
 
 This project was built following concepts from:
 - **How to Build a Python-based Custom HTTP MCP Server and Connect it with Copilot Studio** by Rafsan Huseynov and Maciek Jarka
-- Watch: [https://youtu.be/5gWBoc5Rx3w?si=ps4Q_uqzqOJBz2iG](https://youtu.be/5gWBoc5Rx3w?si=ps4Q_uqzqOJBz2iG)
+- Watch: [[https://youtu.be/5gWBoc5Rx3w?si=ps4Q_uqzqOJBz2iG](https://youtu.be/5gWBoc5Rx3w?si=x9QJPjXh6jFTwO_4)]([https://youtu.be/5gWBoc5Rx3w?si=ps4Q_uqzqOJBz2iG](https://youtu.be/5gWBoc5Rx3w?si=x9QJPjXh6jFTwO_4))
 
 ---
 
