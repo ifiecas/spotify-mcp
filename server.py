@@ -127,6 +127,41 @@ def search_artist_by_name(artist_name: str) -> Any:
 
 
 # ------------------------------------------------------
+# TOOL: Search Tracks
+# ------------------------------------------------------
+@mcp.tool()
+def search_tracks(query: str, limit: int = 10) -> Any:
+    """Search for tracks on Spotify
+    
+    Args:
+        query: Search query (track name, artist, or both)
+        limit: Maximum number of results (1-50, default 10)
+    
+    Returns:
+        Spotify search results with track information
+    """
+    token = get_spotify_token()
+    if not token:
+        return {"error": "Spotify authentication failed"}
+
+    # Ensure limit is within valid range
+    limit = max(1, min(50, limit))
+
+    try:
+        resp = requests.get(
+            "https://api.spotify.com/v1/search",
+            params={"q": query, "type": "track", "limit": limit},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        logger.error(f"Track search failed: {e}")
+        return {"error": str(e)}
+
+
+# ------------------------------------------------------
 # TOOL: Get Top Tracks
 # ------------------------------------------------------
 @mcp.tool()
@@ -189,6 +224,188 @@ def get_artist_albums(artist_id: str) -> Any:
 
 
 # ------------------------------------------------------
+# TOOL: Get Artist Information
+# ------------------------------------------------------
+@mcp.tool()
+def get_artist_info(artist_id: str) -> Any:
+    """Get detailed information about a Spotify artist
+    
+    Args:
+        artist_id: The Spotify ID of the artist
+    
+    Returns:
+        Artist details including genres, popularity, followers, and images
+    """
+    token = get_spotify_token()
+    if not token:
+        return {"error": "Spotify authentication failed"}
+
+    try:
+        resp = requests.get(
+            f"https://api.spotify.com/v1/artists/{artist_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        logger.error(f"Get artist info failed: {e}")
+        return {"error": str(e)}
+
+
+# ------------------------------------------------------
+# TOOL: Get Related Artists
+# ------------------------------------------------------
+@mcp.tool()
+def get_related_artists(artist_id: str) -> Any:
+    """Get artists similar to a given artist
+    
+    Args:
+        artist_id: The Spotify ID of the artist
+    
+    Returns:
+        List of related artists
+    """
+    token = get_spotify_token()
+    if not token:
+        return {"error": "Spotify authentication failed"}
+
+    try:
+        resp = requests.get(
+            f"https://api.spotify.com/v1/artists/{artist_id}/related-artists",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        logger.error(f"Get related artists failed: {e}")
+        return {"error": str(e)}
+
+
+# ------------------------------------------------------
+# TOOL: Get Track Audio Features
+# ------------------------------------------------------
+@mcp.tool()
+def get_track_audio_features(track_id: str) -> Any:
+    """Get audio features for a track (energy, danceability, tempo, etc.)
+    
+    Args:
+        track_id: The Spotify ID of the track
+    
+    Returns:
+        Audio features including danceability, energy, key, loudness, mode, 
+        speechiness, acousticness, instrumentalness, liveness, valence, tempo
+    """
+    token = get_spotify_token()
+    if not token:
+        return {"error": "Spotify authentication failed"}
+
+    try:
+        resp = requests.get(
+            f"https://api.spotify.com/v1/audio-features/{track_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        logger.error(f"Get audio features failed: {e}")
+        return {"error": str(e)}
+
+
+# ------------------------------------------------------
+# TOOL: Get Track Details
+# ------------------------------------------------------
+@mcp.tool()
+def get_track_details(track_id: str) -> Any:
+    """Get detailed information about a specific track
+    
+    Args:
+        track_id: The Spotify ID of the track
+    
+    Returns:
+        Track details including name, artists, album, duration, popularity, preview URL
+    """
+    token = get_spotify_token()
+    if not token:
+        return {"error": "Spotify authentication failed"}
+
+    try:
+        resp = requests.get(
+            f"https://api.spotify.com/v1/tracks/{track_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        logger.error(f"Get track details failed: {e}")
+        return {"error": str(e)}
+
+
+# ------------------------------------------------------
+# TOOL: Get Album Details
+# ------------------------------------------------------
+@mcp.tool()
+def get_album_details(album_id: str) -> Any:
+    """Get detailed information about a Spotify album
+    
+    Args:
+        album_id: The Spotify ID of the album
+    
+    Returns:
+        Album details including name, artists, release date, tracks, and images
+    """
+    token = get_spotify_token()
+    if not token:
+        return {"error": "Spotify authentication failed"}
+
+    try:
+        resp = requests.get(
+            f"https://api.spotify.com/v1/albums/{album_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        logger.error(f"Get album details failed: {e}")
+        return {"error": str(e)}
+
+
+# ------------------------------------------------------
+# TOOL: Get Multiple Tracks Audio Features
+# ------------------------------------------------------
+@mcp.tool()
+def get_multiple_tracks_audio_features(track_ids: str) -> Any:
+    """Get audio features for multiple tracks at once
+    
+    Args:
+        track_ids: Comma-separated list of Spotify track IDs (up to 100)
+    
+    Returns:
+        Audio features for all requested tracks
+    """
+    token = get_spotify_token()
+    if not token:
+        return {"error": "Spotify authentication failed"}
+
+    try:
+        resp = requests.get(
+            "https://api.spotify.com/v1/audio-features",
+            params={"ids": track_ids},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        logger.error(f"Get multiple audio features failed: {e}")
+        return {"error": str(e)}
+
+
+# ------------------------------------------------------
 # RUN SERVER
 # ------------------------------------------------------
 if __name__ == "__main__":
@@ -196,6 +413,7 @@ if __name__ == "__main__":
     logger.info(f"   Port: {PORT}")
     logger.info(f"   Endpoint: /mcp")
     logger.info(f"   Authentication: Bearer token required")
+    logger.info(f"   Available Tools: 11")
     
     # Get the HTTP app
     app = mcp.http_app()
